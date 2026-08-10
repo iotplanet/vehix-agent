@@ -1,0 +1,20 @@
+[package]
+name = "uds-parser"
+version = "0.1.0"
+edition = "2021"
+description = "UDS (ISO 14229) diagnostic protocol parser — zero-copy, memory-safe DTC extraction"
+
+[lib]
+name = "uds_parser"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Zero-copy parser combinators
+nom = "7"
+
+# PyO3 binding (Phase 2)
+# pyo3 = { version = "0.22", features = ["extension-module"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

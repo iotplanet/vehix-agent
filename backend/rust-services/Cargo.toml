@@ -1,0 +1,3 @@
+[workspace]
+members = ["command-gateway", "uds-parser", "ota-verifier"]
+resolver = "2"

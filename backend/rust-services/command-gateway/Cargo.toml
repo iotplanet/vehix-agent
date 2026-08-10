@@ -1,0 +1,26 @@
+[package]
+name = "command-gateway"
+version = "0.1.0"
+edition = "2021"
+description = "Remote vehicle command gateway — constant-time crypto, replay protection, approval token verification"
+
+[lib]
+name = "command_gateway"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# PyO3 — Python binding (Phase 2: cdylib)
+# pyo3 = { version = "0.22", features = ["extension-module"] }
+
+# Ed25519 signatures
+ed25519-dalek = "2"
+
+# Constant-time comparisons
+subtle = "2"
+
+# JSON serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Hex encoding
+hex = "0.4"

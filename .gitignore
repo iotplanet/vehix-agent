@@ -1,0 +1,57 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.whl
+venv/
+.venv/
+*.so
+
+# ── Environment ──
+.env
+.env.*
+!.env.example
+
+# ── Node.js / Frontend ──
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+.npm/
+
+# ── Rust ──
+backend/rust-services/target/
+**/target/
+
+# ── Database ──
+*.db
+*.sqlite
+*.sqlite3
+
+# ── IDE / Editor ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ── Claude ──
+.claude/
+
+# ── Docker ──
+docker-compose.override.yml
+
+# ── Logs ──
+*.log
+logs/
