@@ -1,9 +1,9 @@
 # ── Dev mode (default) ──
 FROM node:22-alpine AS dev
 WORKDIR /app
-RUN corepack enable
+RUN corepack enable && corepack prepare pnpm@10 --activate
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 COPY . .
 EXPOSE 5173
 CMD ["pnpm", "dev", "--host", "0.0.0.0"]
@@ -11,9 +11,9 @@ CMD ["pnpm", "dev", "--host", "0.0.0.0"]
 # ── Production build (optional: docker build --target prod) ──
 FROM node:22-alpine AS builder
 WORKDIR /app
-RUN corepack enable
+RUN corepack enable && corepack prepare pnpm@10 --activate
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 COPY . .
 RUN pnpm build
 
