@@ -1,18 +1,18 @@
 # Vehix Agent — Docker Compose
 #
-# Services:
-#   backend       — FastAPI + LangGraph Agent + Vehicle Simulators
-#   frontend      — React + Vite dev server
-#   xtream-codec  — JT/T 808/1078 protocol gateway (Java, optional)
-#   postgres      — Shared database (for xtream-codec)
+# Quick start:
+#   VEHIX_LLM_API_KEY=sk-xxx docker compose up -d    # Production
+#   docker compose --profile dev up -d                # Dev (with hot-reload)
 #
-# Usage:
-#   docker compose up -d                    # All services
-#   docker compose up -d backend frontend   # Minimal (no xtream-codec)
-#   docker compose --profile jtt up -d      # With JT/T 808
+# Services:
+#   backend        — FastAPI + LangGraph Agent + Simulators (port 8000)
+#   frontend       — nginx serving React SPA (port 80)
+#   frontend-dev   — Vite dev server (port 5173, profile: dev)
+#   xtream-codec   — JT/T 808/1078 gateway (profile: jtt)
+#   postgres       — PostgreSQL 15 (optional)
 
 services:
-  # ── Core: Python backend ──────────────────────────────────────
+  # ── Backend ────────────────────────────────────────────────────
   backend:
     build:
       context: ./backend
@@ -22,19 +22,16 @@ services:
     environment:
       - VEHIX_DATABASE_URL=sqlite+aiosqlite:///./vehix.db
       - VEHIX_LLM_API_KEY=${VEHIX_LLM_API_KEY:-}
-      - VEHIX_LLM_BASE_URL=${VEHIX_LLM_BASE_URL:-https://api.openai.com/v1}
-      - VEHIX_LLM_MODEL=${VEHIX_LLM_MODEL:-gpt-4o-mini}
+      - VEHIX_LLM_BASE_URL=${VEHIX_LLM_BASE_URL:-https://api.deepseek.com}
+      - VEHIX_LLM_MODEL=${VEHIX_LLM_MODEL:-deepseek-chat}
       - VEHIX_SIMULATOR_ENABLED=true
       - VEHIX_SIMULATOR_VEHICLE_COUNT=10
       - VEHIX_SIMULATOR_TELEMETRY_INTERVAL_S=5.0
       - VEHIX_SIMULATOR_FAULT_PROBABILITY=0.02
-      # Switch to PostgreSQL: uncomment the next line + ensure postgres service is up
-      # VEHIX_DATABASE_URL=postgresql+asyncpg://xtream:xtream@postgres:5432/xtream
-      # JT/T 808 bridge (optional — set to enable)
       - VEHIX_JTT808_ENABLED=${VEHIX_JTT808_ENABLED:-false}
       - VEHIX_JTT808_BASE_URL=${VEHIX_JTT808_BASE_URL:-http://xtream-codec:8808}
-    volumes:
-      - ./backend:/app
+      # PostgreSQL (uncomment to switch from SQLite):
+      # VEHIX_DATABASE_URL=postgresql+asyncpg://xtream:xtream@postgres:5432/xtream
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
@@ -42,42 +39,40 @@ services:
       timeout: 10s
       retries: 3
 
-  # ── Core: React frontend ──────────────────────────────────────
+  # ── Frontend (production) ──────────────────────────────────────
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      target: prod
+      args:
+        VITE_AMAP_KEY: ${VITE_AMAP_KEY:-}
     ports:
-      - "5173:5173"
+      - "80:80"
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
 
-  # ── Extension: xtream-codec (JT/T 808/1078 gateway) ──────────
-  # Profile "jtt" — only starts when explicitly requested:
-  #   docker compose --profile jtt up -d
-  xtream-codec:
-    image: registry.cn-hangzhou.aliyuncs.com/xtream-codec/jt-808-server-quick-start-with-dashboard:latest
-    profiles: ["jtt"]
+  # ── Frontend (dev) — docker compose --profile dev up ───────────
+  frontend-dev:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    profiles: ["dev"]
     ports:
-      - "8808:8808"    # JT/T 808 TCP server
-      - "8888:8888"    # Dashboard UI
+      - "5173:5173"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/xtream
-      - SPRING_DATASOURCE_USERNAME=xtream
-      - SPRING_DATASOURCE_PASSWORD=xtream
+      - VITE_AMAP_KEY=${VITE_AMAP_KEY:-}
+    volumes:
+      - ./frontend/src:/app/src
     depends_on:
-      postgres:
+      backend:
         condition: service_healthy
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8888/actuator/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  # ── Database: PostgreSQL (optional, SQLite by default) ────────
+  # ── PostgreSQL (optional) ──────────────────────────────────────
   postgres:
     image: postgres:15-alpine
     environment:
@@ -93,6 +88,22 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ── xtream-codec — docker compose --profile jtt up ─────────────
+  xtream-codec:
+    image: registry.cn-hangzhou.aliyuncs.com/xtream-codec/jt-808-server-quick-start-with-dashboard:latest
+    profiles: ["jtt"]
+    ports:
+      - "8808:8808"
+      - "8888:8888"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/xtream
+      - SPRING_DATASOURCE_USERNAME=xtream
+      - SPRING_DATASOURCE_PASSWORD=xtream
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   pgdata:
