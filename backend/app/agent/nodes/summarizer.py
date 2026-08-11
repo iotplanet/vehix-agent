@@ -7,34 +7,56 @@ from langchain_core.runnables import RunnableConfig
 
 from app.agent.state import VehixAgentState
 
-DIAGNOSIS_PROMPT = """你是一个新能源车故障诊断专家。根据以下 DTC 数据、冻结帧、遥测趋势和车辆孪生信息，给出结构化诊断结论。
+DIAGNOSIS_PROMPT = """你是新能源车三电系统诊断专家。根据以下数据，给出结构化诊断结论。
 
 ## 诊断数据
 {tool_results}
 
-## 输出格式（严格 JSON，不要其他文字）
+## 输出格式（严格 JSON）
 {{
-  "root_cause": "根因分析（一句话）",
+  "summary": "一句话概述（如：车辆整体状态良好，无活跃故障码）",
+  "root_cause": "根因分析（如有故障），无故障则写'无'",
   "confidence": 85,
-  "possible_causes": ["可能原因1", "可能原因2"],
+  "severity": "normal|warning|critical",
+  "possible_causes": ["原因1", "原因2"],
   "steps": ["排查步骤1", "排查步骤2"],
-  "suggested_parts": ["建议备件1", "建议备件2"]
+  "suggested_parts": ["建议备件1"],
+  "should_create_workorder": false,
+  "should_limit_power": false,
+  "next_action": "建议的下一步操作（如：持续监控、建议保养、立即进站等）"
 }}
+
+注意：
+- 如果无故障码，root_cause 写"当前无活跃故障"，severity 为 "normal"，confidence 为 95
+- 遥测数据异常但无 DTC 时，分析可能的传感器或通信问题
+- 温度异常时，should_limit_power 建议为 true
+- 根据严重程度建议 next_action
 
 请输出 JSON："""
 
-SUMMARIZE_PROMPT = """你是一个新能源车队智能运维助手 Vehix Agent。根据工具调用结果生成简洁专业的回复。
+SUMMARIZE_PROMPT = """你是维克斯（Vehix），一个专业的新能源车队智能运维助手。
 
-回复要求：
-1. 使用中文
-2. 数据用表格或列表展示
-3. 有故障时给出诊断分析和建议
-4. 重要：只有工具结果明确标注"approval_required: true"时才提示需要审批。OTA任务、工单创建等不需要审批，直接告知结果即可。
+## 回复原则
+1. 使用中文，专业但易懂
+2. 关键数据用表格或列表清晰展示
+3. 有故障时：先总结严重程度，再逐条分析，最后给排查建议
+4. 有异常数据时：标注正常范围，对比当前值，给出风险评估
+5. 主动给出下一步建议（如：是否需要创建工单、是否建议OTA升级、是否需要立即停车等）
+6. 操作成功时：简洁确认结果
+7. 只有明确标注"approval_required: true"时才提示需要审批
 
-需要审批: {needs_approval}
+## 上下文
 用户意图: {intent}
-工具调用结果:
+需要审批: {needs_approval}
+
+## 工具调用结果
 {tool_results}
+
+## 要求
+- 不要重复工具名或技术细节
+- 如果结果是 skipped（跳过），说明跳过原因
+- 如果部分工具失败，聚焦成功的结果，简略带过失败
+- 以「还有什么可以帮您的？」结尾
 
 请生成回复："""
 
@@ -71,7 +93,7 @@ class ResponseSummarizer:
                     needs_approval="是 — 请提示用户批准此操作" if state.get("requires_approval") else "否 — 正常告知结果即可，不要提审批",
                     tool_results=json.dumps(formatted, ensure_ascii=False, indent=2),
                 )
-                system_msg = "你是 Vehix Agent，新能源车队智能运维助手。用中文回复，专业简洁。"
+                system_msg = "你是维克斯（Vehix），新能源车队智能运维助手。用中文回复，专业简洁。"
 
             # Get token queue from config for streaming
             token_queue = None
@@ -131,11 +153,20 @@ class ResponseSummarizer:
             return text.strip()
 
     def _format_for_llm(self, results: list) -> list:
-        """Truncate large tool results for LLM context."""
+        """Truncate large tool results for LLM context, handle errors and skips."""
         formatted = []
         for r in results:
             res = r.get("result", {})
             if isinstance(res, dict):
+                # Skip verbose skipped messages
+                if res.get("skipped"):
+                    formatted.append({"tool": r["tool"], "result": {"skipped": True, "message": res.get("message", "已跳过")}})
+                    continue
+                # Keep error messages concise
+                if "error" in res:
+                    formatted.append({"tool": r["tool"], "result": {"error": res["error"]}})
+                    continue
+
                 res_clean = {}
                 for k, v in res.items():
                     if isinstance(v, list) and len(v) > 10:
@@ -245,6 +276,6 @@ class ResponseSummarizer:
             "command_dispatch": "命令未能下发，请确认车辆在线且命令有效。",
             "ota_management": "OTA 任务创建失败。",
             "vehicle_query": "未查询到该车辆信息。",
-            "general": "我是 Vehix Agent，可以帮您：\n- 📋 查询车队列表和车辆状态\n- 🔧 诊断车辆故障码\n- 📡 下发远程车控命令\n- 📊 管理 OTA 升级任务\n\n请问需要什么帮助？",
+            "general": "我是维克斯（Vehix），你的智能车队运维助手，可以帮您：\n- 📋 查询车队列表和车辆状态\n- 🔧 诊断车辆故障码\n- 📡 下发远程车控命令\n- 📊 管理 OTA 升级任务\n\n请问需要什么帮助？",
         }
         return messages.get(intent, messages["general"])

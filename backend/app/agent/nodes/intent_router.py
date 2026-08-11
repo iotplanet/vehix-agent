@@ -9,6 +9,7 @@ PLATE_PATTERN = re.compile(
     r"([京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤川青藏琼])"
     r"([A-Z])·?([A-Z0-9]{4,6})"
 )
+VIN_PATTERN = re.compile(r"([A-HJ-NPR-Z0-9]{14,17})")  # VIN: 14-17 chars, excludes I,O,Q
 
 
 def extract_plate(text: str) -> str | None:
@@ -17,17 +18,27 @@ def extract_plate(text: str) -> str | None:
     return match.group(0) if match else None
 
 INTENT_KEYWORDS = {
-    "fault_diagnosis":   ["故障", "诊断", "DTC", "异常", "报警", "温度", "报错", "故障码"],
-    "command_dispatch":  ["限功率", "解锁", "锁车", "空调", "断电", "下发", "控制", "远程", "限制", "充电", "关闭", "开门"],
-    "ota_management":    ["OTA", "升级", "推送", "版本", "BMS", "固件", "召回"],
-    "predictive_maintain": ["保养", "预警", "SOH", "寿命", "预测", "维护"],
-    "fleet_stats":       ["统计", "列出", "所有", "多少台", "车队", "汇总", "平均", "在线"],
-    "vehicle_query":     ["状态", "孪生", "数据", "遥测", "信息", "详情", "查询", "司机", "轨迹", "视频"],
+    "fault_diagnosis":   ["故障", "诊断", "DTC", "异常", "报警", "温度", "报错", "故障码", "告警", "问题"],
+    "command_dispatch":  ["限功率", "解锁", "锁车", "空调", "断电", "下发", "控制", "远程", "限制", "充电", "关闭", "开门",
+                          "除霜", "加热", "通风", "鸣笛", "闪灯"],
+    "ota_management":    ["OTA", "升级", "推送", "版本", "BMS", "固件", "召回", "更新", "软件"],
+    "predictive_maintain": ["保养", "预警", "SOH", "寿命", "预测", "维护", "衰退"],
+    "fleet_stats":       ["统计", "列出", "所有", "多少台", "车队", "汇总", "平均", "在线", "离线", "有哪些车", "全部车辆"],
+    "vehicle_query":     ["状态", "孪生", "数据", "遥测", "信息", "详情", "查询", "看看", "怎么", "SOC", "电量", "里程",
+                          "在哪", "位置", "速度", "胎压"],
     # JT/T 808 specific
-    "jtt808_track":      ["轨迹", "路线", "行程", "去过"],
-    "jtt808_driver":     ["司机", "驾驶员", "开车"],
+    "jtt808_track":      ["轨迹", "路线", "行程", "去过", "去过哪", "轨迹回放"],
+    "jtt808_driver":     ["司机", "驾驶员", "开车", "驾驶人"],
     "jtt1078_video":     ["视频", "监控", "画面", "摄像头", "实时"],
 }
+
+# ── Follow-up patterns: short queries that imply continuation ──
+FOLLOWUP_PATTERNS = [
+    r"^(它|这|那|这个|那个|这台|那台|该车|这车)",
+    r"^(SOC|SOH|里程|电量|速度|温度|胎压|绝缘|电压|电流)\b",
+    r"^(是多少|怎么样|如何|什么|多少|在哪|还有|其他的?|别的关系)",
+    r"^(呢|吗\?|吧|啊)",
+]
 
 LLM_PROMPT = """你是一个新能源车队运维助手的意图分类器。分析用户消息，返回 JSON：
 
@@ -38,14 +49,17 @@ LLM_PROMPT = """你是一个新能源车队运维助手的意图分类器。分�
 }
 
 意图说明：
-- fault_diagnosis: 询问故障、诊断、DTC、温度异常
+- fault_diagnosis: 询问故障、诊断、DTC、温度异常、告警
 - command_dispatch: 下发车控命令（限功率、解锁、空调、充电等）
 - ota_management: OTA升级、固件推送、版本管理
 - fleet_stats: 车队统计、列出车辆、汇总信息
-- vehicle_query: 查询某台车的状态、遥测数据
-- general: 打招呼、帮助、其他
+- vehicle_query: 查询某台车的状态、SOC、电量、里程、位置等
+- general: 打招呼、帮助、模糊问题
 
-只返回 JSON，不要其他文字。"""
+重要规则：
+1. 如果用户消息是简短的追问（如 "SOC呢？"、"里程多少？"），优先判断为 vehicle_query
+2. 如果消息中没有明确的车牌号，plate_no 填 null
+3. 只返回 JSON，不要其他文字。"""
 
 
 class IntentRouter:
@@ -81,10 +95,13 @@ class IntentRouter:
         if not plate_no:
             plate_no = self._extract_plate(user_msg)
 
-        # Resolve plate to VIN
+        # Resolve to VIN
         vin = None
         if plate_no:
             vin = await self._resolve_plate(plate_no)
+        if not vin:
+            # Try raw VIN in user message
+            vin = self._extract_vin(user_msg)
 
         return {"intent": intent, "vin": vin}
 
@@ -110,6 +127,11 @@ class IntentRouter:
     def _extract_plate(text: str) -> str | None:
         match = PLATE_PATTERN.search(text)
         return match.group(0) if match else None
+
+    @staticmethod
+    def _extract_vin(text: str) -> str | None:
+        match = VIN_PATTERN.search(text)
+        return match.group(1) if match else None
 
     @staticmethod
     async def _resolve_plate(plate: str) -> str | None:

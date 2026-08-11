@@ -54,7 +54,7 @@ let abortController: AbortController | null = null;
 export const useAgentStore = create<AgentState>((set, get) => ({
   messages: [{
     role: "system",
-    content: "你好！我是 Vehix Agent，可以帮你查询车辆状态、诊断故障、下发车控命令、管理 OTA 升级。",
+    content: "你好！我是维克斯（Vehix），你的智能车队运维助手。可以帮你查询车辆状态、诊断故障、下发车控命令、管理 OTA 升级。",
     timestamp: new Date().toISOString(),
   }],
   thoughtSteps: [],

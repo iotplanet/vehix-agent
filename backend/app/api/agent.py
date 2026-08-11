@@ -67,9 +67,19 @@ async def agent_run(request: Request):
     async def event_stream():
         try:
             username = current_user.username if current_user else None
+
+            # ── Carry forward context from previous turn ─────────
+            prev_vin = None
+            try:
+                prev_state = await graph.aget_state(config)
+                if prev_state and prev_state.values:
+                    prev_vin = prev_state.values.get("vin")
+            except Exception:
+                pass
+
             initial_state: VehixAgentState = {
                 "messages": [HumanMessage(content=message)],
-                "intent": "general", "vin": None,
+                "intent": "general", "vin": prev_vin,  # carry VIN from previous turn
                 "user_id": username, "run_id": str(uuid.uuid4())[:8],
                 "tool_calls": [], "tool_results": [],
                 "requires_approval": False, "approval_context": None,
@@ -98,14 +108,8 @@ async def agent_run(request: Request):
 
             result = await graph_task
 
-            # Post-graph: tool calls, approval, final message
+            # Post-graph: approval, final message (tool calls already streamed during run)
             if result:
-                for tc in result.get("tool_results", []):
-                    yield _sse("tool_call", {
-                        "tool": tc.get("tool", "unknown"),
-                        "args": tc.get("args", {}),
-                        "result": tc.get("result", {}),
-                    })
                 if result.get("requires_approval"):
                     ctx = result.get("approval_context", {})
                     if ctx:

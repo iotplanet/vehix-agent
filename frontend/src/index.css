@@ -22,9 +22,3 @@ html, body, #root {
 ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
 
-/* ── Blinking cursor ── */
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-.animate-blink { animation: blink 1s step-end infinite; }

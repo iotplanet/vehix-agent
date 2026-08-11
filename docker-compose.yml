@@ -1,24 +1,36 @@
 # Vehix Agent — Docker Compose
 #
-# Quick start:
-#   VEHIX_LLM_API_KEY=sk-xxx docker compose up -d    # Production
-#   docker compose --profile dev up -d                # Dev (with hot-reload)
+# Architecture: internal nginx aggregates all services; host nginx proxies
+# a single location block to the internal nginx. Only the nginx port is
+# exposed to the host — frontend and backend are internal-only.
 #
-# Services:
-#   backend        — FastAPI + LangGraph Agent + Simulators (port 8000)
-#   frontend       — nginx serving React SPA (port 80)
-#   frontend-dev   — Vite dev server (port 5173, profile: dev)
-#   xtream-codec   — JT/T 808/1078 gateway (profile: jtt)
-#   postgres       — PostgreSQL 15 (optional)
+# Add to host nginx config:
+#   location /vehix/ { proxy_pass http://127.0.0.1:8080/; }
+#
+# Quick start:
+#   VEHIX_LLM_API_KEY=sk-xxx docker compose up -d
 
 services:
+  # ── Internal Nginx (aggregator) ─────────────────────────────────
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"               # Single entry point (host nginx → here)
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    restart: unless-stopped
+
   # ── Backend ────────────────────────────────────────────────────
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
+    # No ports exposed — internal nginx proxies /api/ → backend:8000
     environment:
       - VEHIX_DATABASE_URL=sqlite+aiosqlite:///./vehix.db
       - VEHIX_LLM_API_KEY=${VEHIX_LLM_API_KEY:-}
@@ -29,9 +41,6 @@ services:
       - VEHIX_SIMULATOR_TELEMETRY_INTERVAL_S=5.0
       - VEHIX_SIMULATOR_FAULT_PROBABILITY=0.02
       - VEHIX_JTT808_ENABLED=${VEHIX_JTT808_ENABLED:-false}
-      - VEHIX_JTT808_BASE_URL=${VEHIX_JTT808_BASE_URL:-http://xtream-codec:8808}
-      # PostgreSQL (uncomment to switch from SQLite):
-      # VEHIX_DATABASE_URL=postgresql+asyncpg://xtream:xtream@postgres:5432/xtream
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
@@ -39,7 +48,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # ── Frontend (production) ──────────────────────────────────────
+  # ── Frontend ───────────────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
@@ -47,26 +56,8 @@ services:
       target: prod
       args:
         VITE_AMAP_KEY: ${VITE_AMAP_KEY:-}
-    ports:
-      - "80:80"
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
-
-  # ── Frontend (dev) — docker compose --profile dev up ───────────
-  frontend-dev:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      target: dev
-    profiles: ["dev"]
-    ports:
-      - "5173:5173"
-    environment:
-      - VITE_AMAP_KEY=${VITE_AMAP_KEY:-}
-    volumes:
-      - ./frontend/src:/app/src
+        VITE_BASE_URL: ${VITE_BASE_URL:-/vehix/}
+    # No ports exposed — internal nginx proxies /vehix/ → frontend:80
     depends_on:
       backend:
         condition: service_healthy
@@ -75,6 +66,7 @@ services:
   # ── PostgreSQL (optional) ──────────────────────────────────────
   postgres:
     image: postgres:15-alpine
+    profiles: ["pg"]
     environment:
       - POSTGRES_DB=xtream
       - POSTGRES_USER=xtream
@@ -83,13 +75,8 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U xtream"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
-  # ── xtream-codec — docker compose --profile jtt up ─────────────
+  # ── xtream-codec (JT/T 808) ────────────────────────────────────
   xtream-codec:
     image: registry.cn-hangzhou.aliyuncs.com/xtream-codec/jt-808-server-quick-start-with-dashboard:latest
     profiles: ["jtt"]
@@ -102,8 +89,7 @@ services:
       - SPRING_DATASOURCE_PASSWORD=xtream
     depends_on:
       postgres:
-        condition: service_healthy
-    restart: unless-stopped
+        condition: service_started
 
 volumes:
   pgdata:

@@ -1,11 +1,13 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Card, CardContent, CardHeader, Tabs, TabList, Tab, TabPanel, Badge, BadgeLabel } from "@heroui/react";
+import { Card, CardContent, CardHeader, Tabs, TabList, Tab, TabPanel, Skeleton } from "@heroui/react";
 import { Activity, Wrench, Radio } from "lucide-react";
 import { useVehicleStore } from "../../store/vehicleStore";
 import TelemetryCharts from "./TelemetryCharts";
 import DTCList from "./DTCList";
 import CommandCenter from "./CommandCenter";
+import KpiCard from "../shared/KpiCard";
+import StatusBadge from "../shared/StatusBadge";
 
 export default function VehicleTwin() {
   const { vin } = useParams<{ vin: string }>();
@@ -14,58 +16,75 @@ export default function VehicleTwin() {
   const vehicles = useVehicleStore((s) => s.vehicles);
   const fetchVehicles = useVehicleStore((s) => s.fetchVehicles);
   const vehicle = vehicles.find((v) => v.vin === vin);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchVehicles();
+    const load = async () => {
+      setLoading(true);
+      await fetchVehicles();
+      if (vin) await fetchTwin(vin);
+      setLoading(false);
+    };
+    load();
     if (vin) {
-      fetchTwin(vin);
       const interval = setInterval(() => fetchTwin(vin), 3000);
       return () => clearInterval(interval);
     }
   }, [vin]);
 
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-7 w-48 rounded-lg" />
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 rounded-xl" />
+          ))}
+        </div>
+        <Skeleton className="h-40 rounded-xl" />
+      </div>
+    );
+  }
+
   if (!twin && !vehicle) {
-    return <Card className="bg-content1 border-divider"><CardContent className="p-8 text-center text-default-400">加载中...</CardContent></Card>;
+    return <Card className="bg-content1 border-divider"><CardContent className="p-8 text-center text-default-400">未找到车辆数据</CardContent></Card>;
   }
 
   const alarmLevel = twin?.alarm_level || 0;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <h1 className="text-xl font-bold">{vehicle?.plate_no || vin} — 数字孪生</h1>
-        <Badge color={alarmLevel >= 3 ? "danger" : alarmLevel >= 2 ? "warning" : alarmLevel >= 1 ? "accent" : "success"} variant="soft" size="sm">
-          <BadgeLabel>{alarmLevel >= 3 ? "严重" : alarmLevel >= 2 ? "警告" : alarmLevel >= 1 ? "注意" : "正常"}</BadgeLabel>
-        </Badge>
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+        <h1 className="text-lg sm:text-xl font-bold">{vehicle?.plate_no || vin} — 数字孪生</h1>
+        <StatusBadge level={alarmLevel} />
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {(vehicle?.protocol_type === "gb32960" ? [
-          { label: "SOC", value: twin?.soc, unit: "%", color: "text-green-400" },
-          { label: "SOH", value: twin?.soh, unit: "%", color: twin?.soh && twin.soh < 90 ? "text-yellow-400" : "text-green-400" },
-          { label: "车速", value: twin?.speed, unit: " km/h", color: "text-blue-400" },
-          { label: "总里程", value: twin?.mileage ? (twin.mileage / 10000).toFixed(1) : null, unit: " 万km", color: "text-foreground" },
-          { label: "最高电芯温度", value: twin?.max_cell_temp, unit: "°C", color: twin?.max_cell_temp && twin.max_cell_temp > 50 ? "text-red-400" : "text-foreground" },
-          { label: "电机温度", value: twin?.motor_temp, unit: "°C", color: twin?.motor_temp && twin.motor_temp > 140 ? "text-red-400" : "text-foreground" },
-          { label: "绝缘电阻", value: twin?.insulation_resistance, unit: " kΩ", color: twin?.insulation_resistance && twin.insulation_resistance < 150 ? "text-red-400" : "text-foreground" },
-          { label: "告警等级", value: `${alarmLevel}`, unit: "/3", color: alarmLevel >= 2 ? "text-red-400" : "text-foreground" },
-        ] : [
-          { label: "油量", value: twin?.fuel_level, unit: "%", color: twin?.fuel_level && twin.fuel_level < 20 ? "text-red-400" : "text-green-400" },
-          { label: "车速", value: twin?.speed, unit: " km/h", color: "text-blue-400" },
-          { label: "发动机转速", value: twin?.engine_rpm, unit: " rpm", color: twin?.engine_rpm && twin.engine_rpm > 3000 ? "text-yellow-400" : "text-foreground" },
-          { label: "冷却液温度", value: twin?.coolant_temp, unit: "°C", color: twin?.coolant_temp && twin.coolant_temp > 100 ? "text-red-400" : "text-foreground" },
-          { label: "机油压力", value: twin?.oil_pressure, unit: " bar", color: twin?.oil_pressure && twin.oil_pressure < 1.5 ? "text-red-400" : "text-foreground" },
-          { label: "瞬时油耗", value: twin?.fuel_consumption, unit: " L/100km", color: "text-foreground" },
-          { label: "载货状态", value: twin?.cargo_status === "loaded" ? "满载" : twin?.cargo_status === "empty" ? "空载" : "—", unit: "", color: twin?.cargo_status === "loaded" ? "text-yellow-400" : "text-foreground" },
-          { label: "告警等级", value: `${alarmLevel}`, unit: "/3", color: alarmLevel >= 2 ? "text-red-400" : "text-foreground" },
-        ]).map((kpi) => (
-          <Card key={kpi.label} className="bg-content1 border-divider">
-            <CardContent className="p-4 text-center">
-              <div className={`text-xl font-bold ${kpi.color}`}>{kpi.value != null ? kpi.value : "—"}<span className="text-xs font-normal text-default-400">{kpi.unit}</span></div>
-              <div className="text-xs text-default-400 mt-1">{kpi.label}</div>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+        {vehicle?.protocol_type === "gb32960" ? (
+          <>
+            <KpiCard label="SOC" value={twin?.soc} unit="%" color="text-green-400" />
+            <KpiCard label="SOH" value={twin?.soh} unit="%" color={twin?.soh && twin.soh < 90 ? "text-yellow-400" : "text-green-400"} />
+            <KpiCard label="车速" value={twin?.speed} unit=" km/h" color="text-blue-400" />
+            <KpiCard label="总里程" value={twin?.mileage ? (twin.mileage / 10000).toFixed(1) : null} unit=" 万km" color="text-foreground" />
+            <KpiCard label="最高电芯温度" value={twin?.max_cell_temp} unit="°C" color={twin?.max_cell_temp && twin.max_cell_temp > 50 ? "text-red-400" : "text-foreground"} />
+            <KpiCard label="电机温度" value={twin?.motor_temp} unit="°C" color={twin?.motor_temp && twin.motor_temp > 140 ? "text-red-400" : "text-foreground"} />
+            <KpiCard label="绝缘电阻" value={twin?.insulation_resistance} unit=" kΩ" color={twin?.insulation_resistance && twin.insulation_resistance < 150 ? "text-red-400" : "text-foreground"} />
+            <KpiCard label="告警等级" value={`${alarmLevel}`} unit="/3" color={alarmLevel >= 2 ? "text-red-400" : "text-foreground"} />
+          </>
+        ) : (
+          <>
+            <KpiCard label="油量" value={twin?.fuel_level} unit="%" color={twin?.fuel_level && twin.fuel_level < 20 ? "text-red-400" : "text-green-400"} />
+            <KpiCard label="车速" value={twin?.speed} unit=" km/h" color="text-blue-400" />
+            <KpiCard label="发动机转速" value={twin?.engine_rpm} unit=" rpm" color={twin?.engine_rpm && twin.engine_rpm > 3000 ? "text-yellow-400" : "text-foreground"} />
+            <KpiCard label="冷却液温度" value={twin?.coolant_temp} unit="°C" color={twin?.coolant_temp && twin.coolant_temp > 100 ? "text-red-400" : "text-foreground"} />
+            <KpiCard label="机油压力" value={twin?.oil_pressure} unit=" bar" color={twin?.oil_pressure && twin.oil_pressure < 1.5 ? "text-red-400" : "text-foreground"} />
+            <KpiCard label="瞬时油耗" value={twin?.fuel_consumption} unit=" L/100km" color="text-foreground" />
+            <KpiCard label="载货状态" value={twin?.cargo_status === "loaded" ? "满载" : twin?.cargo_status === "empty" ? "空载" : "—"} color={twin?.cargo_status === "loaded" ? "text-yellow-400" : "text-foreground"} />
+            <KpiCard label="告警等级" value={`${alarmLevel}`} unit="/3" color={alarmLevel >= 2 ? "text-red-400" : "text-foreground"} />
+          </>
+        )}
       </div>
 
       <Card className="bg-content1 border-divider">

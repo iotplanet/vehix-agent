@@ -11,12 +11,14 @@ CMD ["pnpm", "dev", "--host", "0.0.0.0"]
 # ── Production builder ──
 FROM node:22-alpine AS builder
 ARG VITE_AMAP_KEY=""
+ARG VITE_BASE_URL="/"
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10 --activate
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --no-frozen-lockfile
 COPY . .
 ENV VITE_AMAP_KEY=${VITE_AMAP_KEY}
+ENV VITE_BASE_URL=${VITE_BASE_URL}
 RUN pnpm build
 
 # ── Production nginx ──

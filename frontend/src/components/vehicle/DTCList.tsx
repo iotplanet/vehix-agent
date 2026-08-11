@@ -1,13 +1,10 @@
 import { useEffect } from "react";
-import { Card, CardContent, CardHeader } from "@heroui/react";
+import { Card, CardContent, CardHeader, Chip, ChipLabel, Table } from "@heroui/react";
 import { useVehicleStore } from "../../store/vehicleStore";
+import StatusBadge from "../shared/StatusBadge";
 
 interface Props { vin: string }
 
-const SEVERITY_MAP: Record<string, string> = {
-  info: "bg-zinc-500/15 text-default-500", warning: "bg-yellow-500/15 text-yellow-400", critical: "bg-red-500/15 text-red-400",
-};
-const SEV_LABEL: Record<string, string> = { info: "信息", warning: "警告", critical: "严重" };
 const CATEGORY_LABELS: Record<string, string> = { P: "动力系统", C: "底盘", B: "车身", U: "网络通信" };
 
 // Common DTC descriptions (mirrors backend dtc_database.py)
@@ -42,41 +39,38 @@ export default function DTCList({ vin }: Props) {
   return (
     <Card className="bg-content1 border-divider">
       <CardHeader><h3 className="text-sm font-medium text-default-500">故障码列表</h3></CardHeader>
-      <CardContent className="p-0 overflow-x-auto">
-        <table className="w-full min-w-[500px]">
-          <thead>
-            <tr className="border-b border-divider">
-              <th className="text-left text-default-500 text-xs font-medium p-3">故障码</th>
-              <th className="text-left text-default-500 text-xs font-medium p-3">类别</th>
-              <th className="text-left text-default-500 text-xs font-medium p-3">描述</th>
-              <th className="text-left text-default-500 text-xs font-medium p-3">严重度</th>
-            </tr>
-          </thead>
-          <tbody>
-            {dtcCodes.length === 0 ? (
-              <tr><td colSpan={4} className="py-8 text-center text-default-400">✅ 无活跃故障码</td></tr>
-            ) : dtcCodes.map((code) => {
-              const cat = code[0] || "?";
-              const sev = cat === "U" ? "critical" : code.startsWith("P0A8") ? "critical" : "warning";
-              return (
-                <tr key={code} className="border-b border-divider">
-                  <td className="font-mono font-semibold text-foreground p-3">{code}</td>
-                  <td className="p-3">
-                    <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-500/15 text-blue-400">
-                      {CATEGORY_LABELS[cat] || cat}
-                    </span>
-                  </td>
-                  <td className="text-xs text-foreground p-3">{DTC_DESC[code] || code}</td>
-                  <td className="p-3">
-                    <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium ${SEVERITY_MAP[sev] || SEVERITY_MAP.warning}`}>
-                      {SEV_LABEL[sev] || "警告"}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <CardContent className="p-0">
+        <Table variant="secondary" aria-label="故障码列表">
+          <Table.ScrollContainer>
+            <Table.Content className="min-w-[500px]">
+              <Table.Header>
+                <Table.Column isRowHeader className="text-xs">故障码</Table.Column>
+                <Table.Column className="text-xs">类别</Table.Column>
+                <Table.Column className="text-xs">描述</Table.Column>
+                <Table.Column className="text-xs">严重度</Table.Column>
+              </Table.Header>
+              <Table.Body
+                items={dtcCodes.map((code) => ({ code, cat: code[0] || "?", sev: code.startsWith("U") ? "critical" : code.startsWith("P0A8") ? "critical" : "warning" }))}
+                renderEmptyState={() => (
+                  <div className="py-8 text-center text-default-400">✅ 无活跃故障码</div>
+                )}
+              >
+                {(item) => (
+                  <Table.Row key={item.code} id={item.code}>
+                    <Table.Cell className="font-mono font-semibold">{item.code}</Table.Cell>
+                    <Table.Cell>
+                      <Chip size="sm" color="accent"><ChipLabel>{CATEGORY_LABELS[item.cat] || item.cat}</ChipLabel></Chip>
+                    </Table.Cell>
+                    <Table.Cell className="text-xs">{DTC_DESC[item.code] || item.code}</Table.Cell>
+                    <Table.Cell>
+                      <StatusBadge severity={item.sev} />
+                    </Table.Cell>
+                  </Table.Row>
+                )}
+              </Table.Body>
+            </Table.Content>
+          </Table.ScrollContainer>
+        </Table>
       </CardContent>
     </Card>
   );

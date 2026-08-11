@@ -16,7 +16,6 @@ INTENT_PLANS: dict[str, list[dict]] = {
         {"tool": "read_dtc_snapshot", "args_from_dtc": True},
         {"tool": "query_vehicle_twin", "args_from": "vin"},
         {"tool": "query_telemetry_history", "args": {"metric": "max_cell_temp", "hours": 24}},
-        {"tool": "create_workorder", "args": {"priority": "medium"}},
     ],
     "command_dispatch": [
         {"tool": "dispatch_vehicle_command", "args_from": "vin"},
@@ -61,11 +60,16 @@ class TaskPlanner:
         intent = state.get("intent", "general")
         plan = INTENT_PLANS.get(intent, [])
 
-        # Resolve VIN from plate_no if needed
+        # Keep VIN if already resolved by intent router
         vin = state.get("vin")
+
+        # Fallback: try to resolve VIN from messages if not set
         if not vin and plan:
-            # Try to extract VIN from messages
             from app.agent.nodes.intent_router import extract_plate
+            from app.database import async_session
+            from sqlalchemy import select, or_
+            from app.models.vehicle import Vehicle
+
             user_msg = ""
             for m in reversed(state.get("messages", [])):
                 if hasattr(m, "type") and m.type == "human":
@@ -74,8 +78,14 @@ class TaskPlanner:
 
             plate = extract_plate(user_msg)
             if plate:
-                # Will be resolved to VIN during execution
-                vin = None  # executor resolves plate → VIN
+                plate_clean = plate.replace("·", "")
+                async with async_session() as db:
+                    result = await db.execute(
+                        select(Vehicle.vin).where(
+                            or_(Vehicle.plate_no == plate, Vehicle.plate_no == plate_clean)
+                        )
+                    )
+                    vin = result.scalar_one_or_none()
 
         return {
             "tool_calls": plan,

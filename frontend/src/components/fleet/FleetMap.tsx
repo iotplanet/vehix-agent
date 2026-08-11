@@ -1,13 +1,27 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Card, CardContent, CardHeader,
+  Card, CardContent, CardHeader, Skeleton, Table, Chip, ChipLabel,
 } from "@heroui/react";
 import AMapLoader from "@amap/amap-jsapi-loader";
 import { useVehicleStore } from "../../store/vehicleStore";
 import { useFleetStore } from "../../store/fleetStore";
+import KpiCard from "../shared/KpiCard";
+import StatusBadge from "../shared/StatusBadge";
 
 const AMAP_KEY = import.meta.env.VITE_AMAP_KEY || "";
+
+// ── Module-level AMap singleton to survive StrictMode double-mount ──
+let amapPromise: Promise<any> | null = null;
+let amapLoaded = false;
+
+function loadAMapOnce(): Promise<any> {
+  if (amapLoaded && (window as any).AMap) return Promise.resolve((window as any).AMap);
+  if (amapPromise) return amapPromise;
+  amapPromise = AMapLoader.load({ key: AMAP_KEY, version: "2.0" })
+    .then((AMap) => { amapLoaded = true; return AMap; });
+  return amapPromise;
+}
 
 export default function FleetMap() {
   const vehicles = useVehicleStore((s) => s.vehicles);
@@ -15,48 +29,50 @@ export default function FleetMap() {
   const stats = useFleetStore((s) => s.stats);
   const fetchStats = useFleetStore((s) => s.fetchStats);
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
 
   const mapRef = useRef<AMap.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const markersRef = useRef<AMap.Marker[]>([]);
   const infoWindowRef = useRef<AMap.InfoWindow | null>(null);
-  const loadedRef = useRef(false);
+  const [mapError, setMapError] = useState(false);
 
-  // ── Init AMap ─────────────────────────────────────────────
+  // ── Init AMap after container is ready (not during skeleton) ──
+  const mapReady = !loading && !!containerRef.current && !!AMAP_KEY;
+
   useEffect(() => {
-    if (loadedRef.current || !containerRef.current) return;
-    loadedRef.current = true;
+    if (!mapReady) return;
+    if (mapRef.current) return; // already initialized
 
-    let map: AMap.Map | undefined;
-
-    AMapLoader.load({
-      key: AMAP_KEY,
-      version: "2.0",
-    })
+    loadAMapOnce()
       .then((AMap) => {
-        map = new AMap.Map(containerRef.current!, {
+        if (mapRef.current || !containerRef.current) return;
+        const map = new AMap.Map(containerRef.current, {
           zoom: 12,
-          center: [116.397, 39.909], // Beijing center
+          center: [116.397, 39.909],
           viewMode: "2D",
           mapStyle: "amap://styles/dark",
           resizeEnable: true,
         });
-        mapRef.current = map ?? null;
+        mapRef.current = map;
         infoWindowRef.current = new AMap.InfoWindow({ offset: { x: 0, y: -30 } });
       })
-      .catch((e) => console.warn("AMap load failed — using fallback:", e));
+      .catch(() => setMapError(true));
 
     return () => {
-      map?.destroy();
+      mapRef.current?.destroy();
       mapRef.current = null;
-      loadedRef.current = false;
     };
-  }, []);
+  }, [mapReady]);
 
   // ── Fetch vehicle data ────────────────────────────────────
   useEffect(() => {
-    fetchVehicles();
-    fetchStats();
+    const load = async () => {
+      setLoading(true);
+      await Promise.all([fetchVehicles(), fetchStats()]);
+      setLoading(false);
+    };
+    load();
     const interval = setInterval(fetchVehicles, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -126,66 +142,51 @@ export default function FleetMap() {
     return () => { delete (window as any).__vehixNav; };
   }, [navigate]);
 
-  // ── Badge helpers ─────────────────────────────────────────
-  const alarmStyles: Record<number, string> = {
-    0: "bg-green-500/15 text-green-400",
-    1: "bg-blue-500/15 text-blue-400",
-    2: "bg-yellow-500/15 text-yellow-400",
-    3: "bg-red-500/15 text-red-400",
-  };
-  const alarmLabel = (level: number) => ["正常","注意","警告","严重"][level] || "正常";
-
-  const protoStyle = (pt: string) =>
-    pt === "jtt808" ? "bg-yellow-500/15 text-yellow-400" :
-    pt === "jtt1078" ? "bg-red-500/15 text-red-400" :
-    "bg-blue-500/15 text-blue-400";
-
-  const protoLabel = (pt: string) =>
-    pt === "gb32960" ? "GB/T 32960" : pt.toUpperCase();
-
-  if (vehicles.length === 0 && !stats) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-xl font-bold">车队地图</h1>
-        <div className="bg-content1 border border-divider rounded-xl p-12 text-center text-default-400">正在加载车辆数据...</div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold">车队地图</h1>
+      <h1 className="text-lg sm:text-xl font-bold">车队地图</h1>
 
       {/* Stats */}
-      {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {[
-            { label: "车辆总数", value: stats.total_vehicles, unit: "台" },
-            { label: "在线", value: stats.online_vehicles, unit: "台" },
-            { label: "离线", value: stats.offline_vehicles, unit: "台" },
-            { label: "平均 SOC", value: `${stats.avg_soc}`, unit: "%" },
-            { label: "平均 SOH", value: `${stats.avg_soh}`, unit: "%" },
-          ].map((s) => (
-            <Card key={s.label} className="">
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-blue-400">{s.value}<span className="text-xs font-normal text-default-400 ml-0.5">{s.unit}</span></div>
-                <div className="text-xs text-default-400 mt-1">{s.label}</div>
-              </CardContent>
-            </Card>
+      {loading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 rounded-xl" />
           ))}
+        </div>
+      ) : stats && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
+          <KpiCard label="车辆总数" value={stats.total_vehicles} unit="台" />
+          <KpiCard label="在线" value={stats.online_vehicles} unit="台" color="text-green-400" />
+          <KpiCard label="离线" value={stats.offline_vehicles} unit="台" color="text-default-500" />
+          <KpiCard label="平均 SOC" value={stats.avg_soc} unit="%" />
+          <KpiCard label="平均 SOH" value={stats.avg_soh} unit="%" />
         </div>
       )}
 
       {/* AMap */}
-      <Card className="">
+      <Card className="relative">
         <CardContent className="p-0">
-          <div ref={containerRef} className="w-full h-[460px] rounded-lg overflow-hidden" />
-          {!AMAP_KEY && (
+          <div ref={containerRef} className="w-full h-[360px] sm:h-[460px] rounded-lg overflow-hidden" />
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-content1 rounded-lg">
+              <Skeleton className="w-full h-full rounded-lg" />
+            </div>
+          )}
+          {(!AMAP_KEY || mapError) && (
             <div className="absolute inset-0 flex items-center justify-center bg-content1/80 rounded-lg">
               <div className="text-center text-default-400">
                 <div className="text-lg mb-2">🗺️</div>
-                <div>请配置高德地图 Key</div>
-                <div className="text-xs mt-1">在 frontend/.env 中设置 VITE_AMAP_KEY</div>
+                {!AMAP_KEY ? (
+                  <>
+                    <div>请配置高德地图 Key</div>
+                    <div className="text-xs mt-1">在 frontend/.env 中设置 VITE_AMAP_KEY</div>
+                  </>
+                ) : (
+                  <>
+                    <div>地图加载失败</div>
+                    <div className="text-xs mt-1">请检查 Key 是否有效或网络连接</div>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -195,54 +196,56 @@ export default function FleetMap() {
       {/* Vehicle table */}
       <Card className="">
         <CardHeader className="pb-0 pt-4 px-4"><h3 className="text-sm font-medium text-foreground">车辆列表</h3></CardHeader>
-        <CardContent className="p-0 overflow-x-auto">
-          <table className="w-full min-w-[600px]">
-            <thead>
-              <tr className="border-b border-divider">
-                <th className="text-left text-default-500 text-xs font-medium p-3">车牌</th>
-                <th className="text-left text-default-500 text-xs font-medium p-3">协议</th>
-                <th className="text-left text-default-500 text-xs font-medium p-3">车型</th>
-                <th className="text-left text-default-500 text-xs font-medium p-3">SOC/油量</th>
-                <th className="text-left text-default-500 text-xs font-medium p-3">SOH/水温</th>
-                <th className="text-left text-default-500 text-xs font-medium p-3">告警</th>
-                <th className="text-left text-default-500 text-xs font-medium p-3">状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vehicles.map((v) => (
-                <tr key={v.vin} onClick={() => navigate(`/vehicle/${v.vin}`)} className="border-b border-divider cursor-pointer hover:bg-content2/50 transition-colors">
-                  <td className="font-semibold text-foreground p-3">{v.plate_no}</td>
-                  <td className="p-3">
-                    <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium ${protoStyle(v.protocol_type)}`}>
-                      {protoLabel(v.protocol_type)}
-                    </span>
-                  </td>
-                  <td className="text-foreground p-3 text-xs">{v.oem} {v.model}</td>
-                  <td className="text-foreground p-3">
-                    {v.protocol_type === "gb32960"
-                      ? (v.twin?.soc != null ? `${v.twin.soc}%` : "—")
-                      : (v.twin?.fuel_level != null ? `${v.twin.fuel_level}%` : "—")}
-                  </td>
-                  <td className="text-foreground p-3">
-                    {v.protocol_type === "gb32960"
-                      ? (v.twin?.soh != null ? `${v.twin.soh}%` : "—")
-                      : (v.twin?.coolant_temp != null ? `${v.twin.coolant_temp}°C` : "—")}
-                  </td>
-                  <td className="p-3">
-                    <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium ${alarmStyles[v.twin?.alarm_level || 0]}`}>
-                      {alarmLabel(v.twin?.alarm_level || 0)}
-                    </span>
-                  </td>
-                  <td className="p-3">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${v.online_status === "online" ? "bg-green-500/15 text-green-400" : "bg-zinc-500/15 text-default-500"}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${v.online_status === "online" ? "bg-green-400" : "bg-zinc-500"}`} />
-                      {v.online_status === "online" ? "在线" : "离线"}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <CardContent className="p-0">
+          <Table variant="secondary" aria-label="车辆列表">
+            <Table.ScrollContainer>
+              <Table.Content className="min-w-[600px]">
+                <Table.Header>
+                  <Table.Column isRowHeader className="text-xs">车牌</Table.Column>
+                  <Table.Column className="text-xs">协议</Table.Column>
+                  <Table.Column className="text-xs">车型</Table.Column>
+                  <Table.Column className="text-xs">SOC/油量</Table.Column>
+                  <Table.Column className="text-xs">SOH/水温</Table.Column>
+                  <Table.Column className="text-xs">告警</Table.Column>
+                  <Table.Column className="text-xs">状态</Table.Column>
+                </Table.Header>
+                <Table.Body
+                  items={vehicles}
+                  renderEmptyState={() => (
+                    <div className="py-8 text-center text-default-400">暂无车辆数据</div>
+                  )}
+                >
+                  {(v) => (
+                    <Table.Row key={v.vin} id={v.vin} className="cursor-pointer" onClick={() => navigate(`/vehicle/${v.vin}`)}>
+                      <Table.Cell className="font-semibold">{v.plate_no}</Table.Cell>
+                      <Table.Cell>
+                        <Chip size="sm" color={v.protocol_type === "jtt808" ? "warning" : v.protocol_type === "jtt1078" ? "danger" : "accent"}>
+                          <ChipLabel>{v.protocol_type === "gb32960" ? "GB/T 32960" : v.protocol_type.toUpperCase()}</ChipLabel>
+                        </Chip>
+                      </Table.Cell>
+                      <Table.Cell className="text-xs">{v.oem} {v.model}</Table.Cell>
+                      <Table.Cell>
+                        {v.protocol_type === "gb32960"
+                          ? (v.twin?.soc != null ? `${v.twin.soc}%` : "—")
+                          : (v.twin?.fuel_level != null ? `${v.twin.fuel_level}%` : "—")}
+                      </Table.Cell>
+                      <Table.Cell>
+                        {v.protocol_type === "gb32960"
+                          ? (v.twin?.soh != null ? `${v.twin.soh}%` : "—")
+                          : (v.twin?.coolant_temp != null ? `${v.twin.coolant_temp}°C` : "—")}
+                      </Table.Cell>
+                      <Table.Cell>
+                        <StatusBadge level={v.twin?.alarm_level || 0} />
+                      </Table.Cell>
+                      <Table.Cell>
+                        <StatusBadge status={v.online_status} />
+                      </Table.Cell>
+                    </Table.Row>
+                  )}
+                </Table.Body>
+              </Table.Content>
+            </Table.ScrollContainer>
+          </Table>
         </CardContent>
       </Card>
     </div>

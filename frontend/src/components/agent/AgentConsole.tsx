@@ -1,13 +1,12 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Card, CardContent, CardHeader,
-  Button, Input,
-  Chip, ChipLabel,
+  Card, CardContent,
+  Button, Input, Drawer, Chip, ChipLabel, ScrollShadow,
 } from "@heroui/react";
-import { Send, ShieldAlert, ShieldCheck, ShieldX, Mic } from "lucide-react";
+import { Send, ShieldAlert, ShieldCheck, ShieldX, Mic, Brain } from "lucide-react";
+import { motion, useAnimationControls } from "framer-motion";
 import { useAgentStream } from "../../hooks/useAgentStream";
-import ThoughtTimeline from "./ThoughtTimeline";
-import ToolCallCard from "./ToolCallCard";
+import AgentSidePanel from "./AgentSidePanel";
 import Markdown from "./Markdown";
 
 const QUICK_PROMPTS = [
@@ -16,16 +15,33 @@ const QUICK_PROMPTS = [
   "诊断京A·D1024 的温度异常",
   "限制京A·D1024 功率至 70%",
   "给 SOH 低于 90% 的车推送 BMS 2.3.1",
+  "查看车队整体健康状况",
+  "京B·E5678 的电池SOH是多少？",
+  "帮我分析最近一周的充电效率",
 ];
 
 export default function AgentConsole() {
   const [input, setInput] = useState("");
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
+  const scrollControls = useAnimationControls();
+
+  useEffect(() => {
+    scrollControls.start({
+      y: ["0%", "-50%"],
+    }, {
+      duration: 30,
+      repeat: Infinity,
+      ease: "linear",
+    });
+  }, [scrollControls]);
   const {
     send, isStreaming, isWaitingApproval,
     messages, thoughtSteps, toolCalls, partialResponse,
     approve, error,
   } = useAgentStream();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const isEmpty = messages.filter(m => m.role !== "system").length === 0 && !isStreaming;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -38,15 +54,63 @@ export default function AgentConsole() {
     setInput("");
   };
 
+  const handlePromptClick = useCallback((prompt: string) => {
+    if (isStreaming || isWaitingApproval) return;
+    setInput(prompt);
+  }, [isStreaming, isWaitingApproval]);
+
   return (
-    <div className="flex flex-col lg:flex-row gap-4 h-[calc(100vh-56px)] lg:h-[calc(100vh-48px)]">
+    <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 h-[calc(100dvh-56px)] lg:h-[calc(100dvh-48px)]">
       {/* ── Chat Panel ─────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <h1 className="text-xl font-bold mb-4">Agent 控制台</h1>
 
         <Card className="flex-1 mb-3 bg-content1 border-divider overflow-hidden">
-          <CardContent className="overflow-y-auto p-4 space-y-3">
-            {messages.map((msg, i) => {
+          <CardContent className={`p-4 ${isEmpty ? "h-full flex items-center justify-center overflow-hidden" : "overflow-y-auto space-y-3"}`}>
+            {isEmpty ? (
+              /* ── Empty state: greeting + auto-scrolling quick prompts ── */
+              <div className="flex flex-col items-center justify-center w-full max-w-md mx-auto gap-6">
+                {/* Greeting */}
+                <div className="text-center">
+                  <div className="text-4xl mb-3">👋</div>
+                  <h2 className="text-lg font-semibold text-foreground mb-1">你好，我是维克斯</h2>
+                  <p className="text-sm text-default-400">有什么可以帮你的？</p>
+                </div>
+
+                {/* Scrolling prompts */}
+                <div
+                  className="relative w-full h-48 overflow-hidden"
+                  onMouseEnter={() => scrollControls.stop()}
+                  onMouseLeave={() => scrollControls.start({ y: ["0%", "-50%"] }, { duration: 30, repeat: Infinity, ease: "linear" })}
+                >
+                  <ScrollShadow className="h-full">
+                    <motion.div
+                      className="flex flex-col items-center gap-2 py-6 px-4"
+                      animate={scrollControls}
+                      style={{ willChange: "transform" }}
+                    >
+                      {[...QUICK_PROMPTS, ...QUICK_PROMPTS].map((prompt, i) => (
+                        <Chip
+                          key={`${prompt}-${i}`}
+                          size="md"
+                          variant="secondary"
+                          className="cursor-pointer text-sm text-default-400 hover:text-foreground hover:bg-default-100 transition-colors py-2 px-5 max-w-full"
+                          onClick={() => handlePromptClick(prompt)}
+                        >
+                          <ChipLabel>{prompt}</ChipLabel>
+                        </Chip>
+                      ))}
+                    </motion.div>
+                  </ScrollShadow>
+
+                  {/* Click hint at bottom */}
+                  <div className="absolute bottom-1 left-0 right-0 text-center pointer-events-none z-20">
+                    <span className="text-[10px] text-default-400">点击快捷指令开始对话 ↑</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>{messages.map((msg, i) => {
               // ── Inline approval card ──
               if (msg.role === "approval" && msg.approval) {
                 return (
@@ -110,7 +174,10 @@ export default function AgentConsole() {
                       : "bg-content2 text-foreground"
                   }`}>
                     {msg.role !== "user" && (
-                      <div className="text-xs text-blue-400 mb-1 font-medium">Vehix Agent</div>
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-400 mb-1 font-medium">
+                        <img src="/vehix-assistant.svg" alt="维克斯" className="w-4 h-4 rounded-full" />
+                        维克斯
+                      </div>
                     )}
                     <Markdown content={msg.content} className="leading-relaxed" />
                   </div>
@@ -118,36 +185,39 @@ export default function AgentConsole() {
               );
             })}
 
-            {/* Streaming */}
-            {/* Thinking indicator — shows current node status */}
-            {isStreaming && (
-              <div className="flex justify-start">
-                <div className="max-w-[90%] lg:max-w-[80%] rounded-xl px-4 py-3 text-sm bg-content2/50 text-default-500">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-                    <span>
-                      {thoughtSteps.length === 0 && "正在理解意图..."}
-                      {thoughtSteps.length >= 1 && thoughtSteps[thoughtSteps.length - 1].node === "router" && "正在分析意图..."}
-                      {thoughtSteps.length >= 1 && thoughtSteps[thoughtSteps.length - 1].node === "planner" && "正在规划任务..."}
-                      {thoughtSteps.length >= 2 && thoughtSteps[thoughtSteps.length - 1].node === "executor" && "正在执行工具调用..."}
-                      {thoughtSteps.some(s => s.node === "approver") && "等待审批确认..."}
-                      {thoughtSteps.some(s => s.node === "summarizer") && "正在生成回复..."}
-                    </span>
+              {/* Streaming */}
+              {/* Thinking indicator — shows current node status */}
+              {isStreaming && (
+                <div className="flex justify-start">
+                  <div className="max-w-[90%] lg:max-w-[80%] rounded-xl px-4 py-3 text-sm bg-content2/50 text-default-500">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                      <span>
+                        {thoughtSteps.length === 0 && "正在理解意图..."}
+                        {thoughtSteps.length >= 1 && thoughtSteps[thoughtSteps.length - 1].node === "router" && "正在分析意图..."}
+                        {thoughtSteps.length >= 1 && thoughtSteps[thoughtSteps.length - 1].node === "planner" && "正在规划任务..."}
+                        {thoughtSteps.length >= 2 && thoughtSteps[thoughtSteps.length - 1].node === "executor" && "正在执行工具调用..."}
+                        {thoughtSteps.some(s => s.node === "approver") && "等待审批确认..."}
+                        {thoughtSteps.some(s => s.node === "summarizer") && "正在生成回复..."}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Streaming: progressive Markdown render. Done: final Markdown. */}
-            {partialResponse && (
-              <div className="flex justify-start">
-                <div className="max-w-[90%] lg:max-w-[80%] rounded-xl px-4 py-3 text-sm bg-content2 text-foreground">
-                  <div className="text-xs text-blue-400 mb-1 font-medium">Vehix Agent</div>
-                  <Markdown content={partialResponse} className="leading-relaxed" />
-                  {isStreaming && <span className="animate-blink text-blue-400">|</span>}
+              {/* Streaming: progressive Markdown render. Done: final Markdown. */}
+              {partialResponse && (
+                <div className="flex justify-start">
+                  <div className="max-w-[90%] lg:max-w-[80%] rounded-xl px-4 py-3 text-sm bg-content2 text-foreground">
+                    <div className="flex items-center gap-1.5 text-xs text-emerald-400 mb-1 font-medium">
+                      <img src="/vehix-assistant.svg" alt="维克斯" className="w-4 h-4 rounded-full" />
+                      维克斯
+                    </div>
+                    <Markdown content={partialResponse} className="leading-relaxed" />
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </>)}
             <div ref={messagesEndRef} />
           </CardContent>
         </Card>
@@ -155,6 +225,34 @@ export default function AgentConsole() {
         {error && (
           <div className="mb-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-sm text-red-400">{error}</div>
         )}
+
+        {/* Mobile: quick prompts row + action bar */}
+        <div className="lg:hidden flex flex-col gap-2 mb-2">
+          {/* Horizontal scroll quick prompts */}
+          {isEmpty && (
+            <ScrollShadow orientation="horizontal" className="flex gap-1.5 pb-1 -mx-1 px-1">
+              {QUICK_PROMPTS.slice(0, 5).map((p) => (
+                <Chip
+                  key={p} size="sm" variant="secondary"
+                  className="cursor-pointer whitespace-nowrap text-xs text-default-500 hover:text-foreground flex-shrink-0"
+                  onClick={() => handlePromptClick(p)}
+                >
+                  <ChipLabel>{p}</ChipLabel>
+                </Chip>
+              ))}
+            </ScrollShadow>
+          )}
+          {/* Action bar button */}
+          {(thoughtSteps.length > 0 || toolCalls.length > 0) && (
+            <Button
+              variant="secondary" size="sm" className="self-start"
+              onPress={() => setMobilePanelOpen(true)}
+            >
+              <Brain size={14} className="mr-1" />
+              Agent 执行过程 ({thoughtSteps.length + toolCalls.length})
+            </Button>
+          )}
+        </div>
 
         {/* Input */}
         <form onSubmit={handleSubmit} className="flex gap-2">
@@ -185,34 +283,39 @@ export default function AgentConsole() {
         </form>
       </div>
 
-      {/* ── Right Panel (hidden on mobile unless active) ────── */}
-      <div className="hidden lg:flex lg:w-80 flex-shrink-0 flex-col space-y-3 min-h-0">
-        {thoughtSteps.length > 0 && (
-          <div className="max-h-[35%] overflow-y-auto">
-            <ThoughtTimeline steps={thoughtSteps} />
-          </div>
-        )}
-        {toolCalls.length > 0 && (
-          <div className="max-h-[45%] overflow-y-auto">
-            <ToolCallCard calls={toolCalls} />
-          </div>
-        )}
-
-        <Card className="bg-content1 border-divider">
-          <CardHeader><h3 className="text-xs font-medium text-default-400">试试这些</h3></CardHeader>
-          <CardContent className="flex flex-col gap-1.5">
-            {QUICK_PROMPTS.map((p) => (
-              <Chip
-                key={p} size="sm" variant="secondary"
-                className="cursor-pointer text-xs text-default-500 hover:text-foreground"
-                onClick={() => { if (!isStreaming && !isWaitingApproval) setInput(p); }}
-              >
-                <ChipLabel>{p}</ChipLabel>
-              </Chip>
-            ))}
-          </CardContent>
-        </Card>
+      {/* ── Desktop right panel ───────────────────────────────── */}
+      <div className="hidden lg:flex lg:w-80 flex-shrink-0 min-h-0">
+        <AgentSidePanel
+          thoughtSteps={thoughtSteps}
+          toolCalls={toolCalls}
+          isStreaming={isStreaming}
+          isWaitingApproval={isWaitingApproval}
+          onPromptClick={setInput}
+        />
       </div>
+
+      {/* ── Mobile bottom Drawer ─────────────────────────────── */}
+      <Drawer.Backdrop isOpen={mobilePanelOpen} onOpenChange={setMobilePanelOpen} variant="blur">
+        <Drawer.Content placement="bottom">
+          <Drawer.Dialog className="bg-content1 max-h-[75dvh]">
+            <Drawer.Handle />
+            <Drawer.CloseTrigger />
+            <Drawer.Header className="pb-2">
+              <Drawer.Heading className="text-base font-semibold text-foreground">Agent 执行过程</Drawer.Heading>
+            </Drawer.Header>
+            <Drawer.Body className="overflow-y-auto px-4 pb-6">
+              <AgentSidePanel
+                thoughtSteps={thoughtSteps}
+                toolCalls={toolCalls}
+                isStreaming={isStreaming}
+                isWaitingApproval={isWaitingApproval}
+                onPromptClick={(p) => { setInput(p); setMobilePanelOpen(false); }}
+                compact
+              />
+            </Drawer.Body>
+          </Drawer.Dialog>
+        </Drawer.Content>
+      </Drawer.Backdrop>
     </div>
   );
 }

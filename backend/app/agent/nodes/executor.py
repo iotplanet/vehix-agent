@@ -15,14 +15,18 @@ PLATE_PATTERN = re.compile(
     r"([京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤川青藏琼])"
     r"([A-Z])·?([A-Z0-9]{4,6})"
 )
+VIN_PATTERN = re.compile(r"([A-HJ-NPR-Z0-9]{14,17})")
 
 COMMAND_KEYWORDS: list[tuple[str, str]] = [
-    ("锁车", "unlock_door"), ("解锁", "unlock_door"), ("开门", "unlock_door"),
-    ("空调", "start_hvac"), ("温控", "start_hvac"),
+    ("解锁", "unlock_door"), ("开门", "unlock_door"),
+    ("锁车", "lock_door"), ("上锁", "lock_door"),
+    ("空调", "start_hvac"), ("温控", "start_hvac"), ("暖风", "start_hvac"),
     ("充电", "charge_control"),
     ("限功率", "limit_power"), ("限制功率", "limit_power"), ("降低功率", "limit_power"),
-    ("清除故障码", "clear_dtc"), ("清故障", "clear_dtc"),
+    ("清除故障码", "clear_dtc"), ("清故障", "clear_dtc"), ("清除故障", "clear_dtc"),
     ("紧急断电", "remote_shutdown"), ("远程断电", "remote_shutdown"), ("断电", "remote_shutdown"),
+    ("鸣笛", "horn"), ("喇叭", "horn"),
+    ("闪灯", "flash_lights"), ("双闪", "flash_lights"),
 ]
 
 
@@ -42,45 +46,54 @@ class ToolExecutor:
         args = dict(next_call.get("args", {}))
         tool_def = tool_registry.get(tool_name)
 
-        # ── Smart fill missing params ──────────────────────────
-        if tool_def:
-            missing = self._smart_fill(tool_name, args, tool_def, state, results)
-            if missing:
-                return {
-                    "tool_results": results + [{"tool": tool_name, "args": args, "result": {"error": missing}}],
-                    "requires_approval": False, "approval_context": None,
-                }
+        if not tool_def:
+            results.append({"tool": tool_name, "args": args, "result": {"error": f"未知工具: {tool_name}"}})
+            return {"tool_results": results, "requires_approval": False, "approval_context": None}
 
-        # ── Args from previous DTC result ──────────────────────
+        param_names = self._get_param_names(tool_def)
+
+        # ── Step 1: Resolve VIN from state / message ─────────────
+        vin = state.get("vin")
+        if not vin and "vin" in param_names:
+            vin = await self._resolve_vin_from_message(state)
+            if vin:
+                state["vin"] = vin
+
+        if "vin" in param_names and vin:
+            args["vin"] = vin
+
+        # ── Step 2: Fill args from previous DTC results ──────────
         if next_call.get("args_from_dtc"):
             for prev in reversed(results):
                 if prev.get("tool") == "read_dtc":
                     dtcs = prev.get("result", {}).get("dtcs", [])
                     if dtcs:
                         args["dtc_code"] = dtcs[0].get("dtc_code", "")
-                    break
+                        break
+                    else:
+                        # No DTCs found — skip this tool gracefully
+                        skip_msg = "车辆无活跃故障码，跳过冻结帧读取"
+                        results.append({"tool": tool_name, "args": args, "result": {"skipped": True, "message": skip_msg}})
+                        return {"tool_results": results, "requires_approval": False, "approval_context": None}
 
-        # ── VIN resolution ─────────────────────────────────────
-        vin = state.get("vin")
-        if not vin:
-            vin = await self._resolve_vin_from_message(state)
+        # ── Step 3: Smart fill remaining missing params ──────────
+        missing = self._smart_fill(tool_name, args, tool_def, state, results)
+        if missing:
+            return {
+                "tool_results": results + [{"tool": tool_name, "args": args, "result": {"error": missing}}],
+                "requires_approval": False, "approval_context": None,
+            }
 
-        if tool_def:
-            param_names = self._get_param_names(tool_def)
-            if "vin" in param_names:
-                if vin:
-                    args["vin"] = vin
-                    if not state.get("vin"):
-                        state["vin"] = vin
-                else:
-                    plate = self._extract_plate_from_state(state)
-                    hint = f" (输入车牌: {plate})" if plate else ""
-                    return {
-                        "tool_results": results + [{"tool": tool_name, "args": args, "result": {
-                            "error": f"未找到对应车辆{hint}。请确认车牌号正确，或先使用「列出所有在线车辆」查看可用车辆",
-                        }}],
-                        "requires_approval": False, "approval_context": None,
-                    }
+        # ── Step 4: VIN required but not found ───────────────────
+        if "vin" in param_names and not args.get("vin"):
+            plate = self._extract_plate_from_state(state)
+            hint = f" (输入车牌: {plate})" if plate else ""
+            return {
+                "tool_results": results + [{"tool": tool_name, "args": args, "result": {
+                    "error": f"未找到对应车辆{hint}。请确认车牌号正确，或先使用「列出所有在线车辆」查看可用车辆",
+                }}],
+                "requires_approval": False, "approval_context": None,
+            }
 
         # ── Execute ────────────────────────────────────────────
         result = await tool_registry.call(tool_name, **args)
@@ -113,7 +126,25 @@ class ToolExecutor:
 
             value = None
 
-            if param == "target_vins":
+            if param == "vin":
+                # Already resolved in __call__ Step 1; if still missing, caught by Step 4
+                continue  # skip error — handled by caller
+
+            if param == "dtc_code":
+                # Try from user message (e.g., "P0A2A")
+                m = re.search(r"\b([BCPU]\d{4})\b", user_msg)
+                if m:
+                    value = m.group(1)
+                else:
+                    # Try from previous read_dtc result
+                    for prev in reversed(prev_results):
+                        if prev.get("tool") == "read_dtc":
+                            dtcs = prev.get("result", {}).get("dtcs", [])
+                            if dtcs:
+                                value = dtcs[0].get("dtc_code", "")
+                            break
+
+            elif param == "target_vins":
                 for prev in reversed(prev_results):
                     vehicles = prev.get("result", {}).get("vehicles", [])
                     if vehicles:
@@ -127,8 +158,10 @@ class ToolExecutor:
                     value = f"{prefix} {m.group(1)}".strip() if prefix and len(prefix) < 20 else m.group(1)
 
             elif param == "command":
+                # Strip plate number + whitespace for flexible matching (e.g. "限制...功率" → "限制功率")
+                clean_msg = PLATE_PATTERN.sub("", user_msg).replace(" ", "")
                 for phrase, cmd in COMMAND_KEYWORDS:
-                    if phrase in user_msg:
+                    if phrase in clean_msg:
                         value = cmd
                         break
 
@@ -179,6 +212,22 @@ class ToolExecutor:
     # ── Helpers ────────────────────────────────────────────────
 
     async def _resolve_vin_from_message(self, state: VehixAgentState) -> str | None:
+        msg = self._get_user_message(state)
+
+        # Try raw VIN first (ISO 3779 format)
+        vin_match = VIN_PATTERN.search(msg)
+        if vin_match:
+            from app.database import async_session
+            from sqlalchemy import select
+            from app.models.vehicle import Vehicle
+            async with async_session() as db:
+                result = await db.execute(select(Vehicle.vin).where(Vehicle.vin == vin_match.group(1)))
+                if result.scalar_one_or_none():
+                    return vin_match.group(1)
+                # VIN not in DB but valid format — still use it
+                return vin_match.group(1)
+
+        # Try plate number
         plate = self._extract_plate_from_state(state)
         if not plate:
             return None

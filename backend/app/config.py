@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://localhost:3000",
+        # Production: your HTTPS domain
+        # "https://your-domain.com",
     ]
 
     # ── JT/T 808 Bridge (xtream-codec integration) ──

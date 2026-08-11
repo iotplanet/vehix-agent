@@ -1,6 +1,11 @@
 import { useState } from "react";
-import { Card, CardContent, Button, Modal, ModalDialog, ModalHeader, ModalBody, ModalFooter, ProgressBar, Badge, BadgeLabel } from "@heroui/react";
+import {
+  Card, CardContent, Button, Modal, ModalDialog, ModalHeader, ModalBody,
+  ProgressBar, Badge, BadgeLabel, Skeleton,
+  TextField, Label, Input, TextArea, Select, ListBox, Form, FieldError, Description,
+} from "@heroui/react";
 import { Plus } from "lucide-react";
+import EmptyState from "../shared/EmptyState";
 
 interface OTATask {
   id: number; name: string; software_version: string; strategy: string;
@@ -19,31 +24,74 @@ const STATUS_MAP: Record<string, { color: "success" | "warning" | "danger" | "de
 export default function OTATaskManager() {
   const [tasks] = useState<OTATask[]>(MOCK_TASKS);
   const [showCreate, setShowCreate] = useState(false);
+  const [loading] = useState(false); // placeholder for future API integration
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <h1 className="text-xl font-bold">OTA 任务管理</h1>
+        {Array.from({ length: 2 }).map((_, i) => (
+          <Skeleton key={i} className="h-28 rounded-xl" />
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-4">
         <h1 className="text-xl font-bold">OTA 任务管理</h1>
-        <Button variant="primary" onPress={() => setShowCreate(true)}><Plus size={18} className="mr-1" />创建 OTA 任务</Button>
+        <Button variant="primary" size="sm" className="sm:h-10" onPress={() => setShowCreate(true)}><Plus size={18} className="mr-1" /><span className="hidden sm:inline">创建 OTA 任务</span><span className="sm:hidden">创建任务</span></Button>
       </div>
+      {tasks.length === 0 && (
+        <EmptyState
+          icon="📦"
+          title="暂无 OTA 任务"
+          description="创建第一个远程升级任务"
+          action={<Button variant="primary" size="sm" onPress={() => setShowCreate(true)}><Plus size={14} className="mr-1" />创建任务</Button>}
+        />
+      )}
 
       <Modal isOpen={showCreate} onOpenChange={() => setShowCreate(false)}>
-        <ModalDialog className="bg-content1 border border-divider">
+        <ModalDialog className="bg-content1 border border-divider mx-4 sm:mx-0">
           <ModalHeader className="text-foreground">创建 OTA 升级任务</ModalHeader>
           <ModalBody>
-            <div className="space-y-3">
-              <input placeholder="任务名称" className="w-full p-2.5 rounded-lg bg-content2 border border-divider text-foreground text-sm" />
-              <input placeholder="软件版本 (如 BMS 2.3.1)" className="w-full p-2.5 rounded-lg bg-content2 border border-divider text-foreground text-sm" />
-              <select className="w-full p-2.5 rounded-lg bg-content2 border border-divider text-foreground text-sm">
-                <option>灰度发布</option><option>分批发布</option><option>全量发布</option>
-              </select>
-              <input placeholder="目标 VIN 列表 (逗号分隔)" className="w-full p-2.5 rounded-lg bg-content2 border border-divider text-foreground text-sm" />
-            </div>
+            <Form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setShowCreate(false); }}>
+              <TextField isRequired name="name">
+                <Label>任务名称</Label>
+                <Input placeholder="例如：BMS 固件升级" variant="secondary" />
+                <FieldError />
+              </TextField>
+              <TextField isRequired name="version">
+                <Label>软件版本</Label>
+                <Input placeholder="例如：BMS 2.3.1" variant="secondary" />
+                <FieldError />
+              </TextField>
+              <Select name="strategy" defaultSelectedKey="gray_release">
+                <Label>发布策略</Label>
+                <Select.Trigger>
+                  <Select.Value />
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  <ListBox>
+                    <ListBox.Item id="gray_release">灰度发布</ListBox.Item>
+                    <ListBox.Item id="batch">分批发布</ListBox.Item>
+                    <ListBox.Item id="full">全量发布</ListBox.Item>
+                  </ListBox>
+                </Select.Popover>
+              </Select>
+              <TextField name="vins">
+                <Label>目标 VIN</Label>
+                <TextArea placeholder="逗号分隔的 VIN 列表" rows={3} variant="secondary" />
+                <Description>留空表示全量目标</Description>
+              </TextField>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="secondary" onPress={() => setShowCreate(false)}>取消</Button>
+                <Button variant="primary" type="submit">创建任务</Button>
+              </div>
+            </Form>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="secondary" onPress={() => setShowCreate(false)}>取消</Button>
-            <Button variant="primary">创建任务</Button>
-          </ModalFooter>
         </ModalDialog>
       </Modal>
 

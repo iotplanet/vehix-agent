@@ -16,6 +16,12 @@ from app.mcp.server import tool_registry
 from app.models.dtc import DTCRecord
 from app.models.vehicle import VehicleTwin
 
+# ── DTC description enrichment ───────────────────────────────────
+try:
+    from app.simulator.dtc_database import DTC_DATABASE
+except ImportError:
+    DTC_DATABASE = {}
+
 
 @tool_registry.tool(
     name="read_dtc",
@@ -32,8 +38,30 @@ async def read_dtc(vin: str, status_mask: int = 0x09) -> dict:
 
         result = await db.execute(query.order_by(DTCRecord.occurred_at.desc()))
         dtcs = result.scalars().all()
-        return {"vin": vin, "status_mask": status_mask,
-                "total_count": len(dtcs), "dtcs": [d.to_dict() for d in dtcs]}
+
+        # Enrich with database descriptions
+        dtc_list = []
+        for d in dtcs:
+            entry = d.to_dict()
+            if d.dtc_code in DTC_DATABASE:
+                ref = DTC_DATABASE[d.dtc_code]
+                entry.setdefault("description", ref.description)
+                entry.setdefault("severity", ref.severity)
+                entry.setdefault("category", ref.category)
+                entry.setdefault("system", ref.system)
+            dtc_list.append(entry)
+
+        # Summary stats
+        critical_count = sum(1 for d in dtc_list if d.get("severity") == "critical")
+        warning_count = sum(1 for d in dtc_list if d.get("severity") == "warning")
+
+        return {
+            "vin": vin, "status_mask": status_mask,
+            "total_count": len(dtcs),
+            "critical_count": critical_count,
+            "warning_count": warning_count,
+            "dtcs": dtc_list,
+        }
 
 
 @tool_registry.tool(

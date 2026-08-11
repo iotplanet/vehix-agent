@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <!-- Hexagon background -->
+  <path d="M60 8L112 38V98L60 128L8 98V38L60 8Z" fill="#10B981" />
+  <path d="M60 12L107 40V96L60 123L13 96V40L60 12Z" fill="#059669" />
+  <!-- Inner hex -->
+  <path d="M60 20L100 44V88L60 112L20 88V44L60 20Z" fill="#34D399" opacity="0.3" />
+  <!-- Lightning bolt V -->
+  <path d="M48 36L42 62H54L48 88L78 54H64L72 36H48Z" fill="white" />
+</svg>

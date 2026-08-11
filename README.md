@@ -1,6 +1,19 @@
 # ⚡ Vehix Agent
 
-智能车队运维 Agent 架构原型 — MCP 工具化 + LangGraph 多智能体编排，跨协议统一车队管理。
+<p align="center">
+  <img src="frontend/public/vehix-logo.svg" alt="Vehix Agent" width="120" />
+</p>
+
+<p align="center"><strong>新能源智能车队运维平台</strong></p>
+
+<p align="center">
+  <em>MCP 工具化 · LangGraph 多智能体编排 · 跨协议统一车队管理</em><br/>
+  内置 AI 助手 <strong>维克斯（Vehix）</strong> — 你的 24×7 智能车队运维伙伴
+</p>
+
+---
+
+**维克斯** 是一个基于 LLM 的智能车队运维助手，具备多步诊断推理、车控安全审批、OTA 升级管理和多协议（GB/T 32960 / JT/T 808 / UDS）混合车队统一管理能力。通过 MCP（Model Context Protocol）标准化工具接口，维克斯可以无缝接入各类车辆数据源和控制系统。
 
 > **核心验证**：MCP 工具标准化、LLM 多步诊断推理、车控安全审批门禁、多协议混合车队管理。
 
@@ -21,6 +34,34 @@ alembic -c alembic.ini upgrade head
 # 回滚一步
 alembic -c alembic.ini downgrade -1
 ```
+
+## 部署
+
+### Docker（独立运行）
+
+```bash
+VEHIX_LLM_API_KEY=sk-xxx VITE_AMAP_KEY=4b3b... docker compose up -d
+# 访问 http://localhost:8000 (后端) / http://localhost:5173 (前端 dev)
+```
+
+### 宿主机 nginx 反向代理（HTTPS 子路径）
+
+如果你的服务器已有 HTTPS nginx，将 `host-nginx.conf.example` 中**唯一一个** location 块加入你的 `server {}` 配置：
+
+```nginx
+location /vehix/ { proxy_pass http://127.0.0.1:8080/; }
+```
+
+Docker 内部由 nginx 聚合容器统一路由到前端和后端，宿主机只需这一条规则。
+
+然后启动容器：
+
+```bash
+VITE_BASE_URL=/vehix/ VEHIX_LLM_API_KEY=sk-xxx docker compose up -d
+# 访问 https://your-domain.com/vehix/
+```
+
+TLS 由宿主机 nginx 处理，容器内部只运行 HTTP。
 
 ## 快速启动
 

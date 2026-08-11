@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import {
   Card, CardContent, CardHeader,
-  Button, Input, Badge, BadgeLabel,
+  Button, Input, Badge, BadgeLabel, Skeleton,
+  TextField, Label,
 } from "@heroui/react";
 import { Wrench, ExternalLink, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { apiFetch } from "../../lib/api";
@@ -77,7 +78,11 @@ export default function SystemSettings() {
               <Info label="Key" value={status.key_preview || "未设置"} mono />
             </>
           ) : (
-            <div className="text-default-400 text-sm">加载中...</div>
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-5 w-full rounded-lg" />
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -91,13 +96,17 @@ export default function SystemSettings() {
           <p className="text-xs text-default-400">
             测试一个新的 LLM Key 是否有效。Key 不会被保存——测试通过后请更新 .env 文件。
           </p>
-          <Input
-            placeholder="sk-your-api-key"
-            value={testKey}
-            onChange={(e) => setTestKey(e.target.value)}
-            type="password"
-            className="bg-content2 border-divider text-foreground font-mono text-xs"
-          />
+          <TextField name="testKey">
+            <Label>API Key</Label>
+            <Input
+              placeholder="sk-your-api-key"
+              value={testKey}
+              onChange={(e) => setTestKey(e.target.value)}
+              type="password"
+              variant="secondary"
+              className="font-mono text-xs"
+            />
+          </TextField>
           <div className="flex items-center gap-3">
             <Button
               variant="primary"
