@@ -4,6 +4,20 @@
  */
 import { useAuthStore } from "../store/authStore";
 
+/**
+ * API prefix — when deployed at a sub-path (e.g. /vehix/), all API calls
+ * must go through that prefix so the host nginx reverse-proxy can route them.
+ * Example: BASE_URL="/vehix/" → api calls go to /vehix/api/...
+ *          BASE_URL="/"       → api calls go to /api/...
+ */
+const BASE_URL = import.meta.env.VITE_BASE_URL || "/";
+const API_PREFIX = BASE_URL === "/" ? "" : BASE_URL.replace(/\/$/, "");
+
+/** Prefix a path with the deployment sub-path for API calls. */
+export function apiUrl(path: string): string {
+  return `${API_PREFIX}${path}`;
+}
+
 export async function apiFetch(
   url: string,
   options: RequestInit = {}
@@ -17,7 +31,7 @@ export async function apiFetch(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  let res = await fetch(url, { ...options, headers });
+  let res = await fetch(apiUrl(url), { ...options, headers });
 
   // On 401, try refresh
   if (res.status === 401 && token) {
@@ -25,7 +39,7 @@ export async function apiFetch(
     if (refreshed) {
       const newToken = useAuthStore.getState().token;
       headers["Authorization"] = `Bearer ${newToken}`;
-      res = await fetch(url, { ...options, headers });
+      res = await fetch(apiUrl(url), { ...options, headers });
     }
   }
 
@@ -37,7 +51,7 @@ async function tryRefresh(): Promise<boolean> {
   if (!refreshToken) return false;
 
   try {
-    const res = await fetch("/api/auth/refresh", {
+    const res = await fetch(apiUrl("/api/auth/refresh"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refreshToken }),

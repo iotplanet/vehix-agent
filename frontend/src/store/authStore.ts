@@ -2,6 +2,7 @@
  * Auth store — JWT token management, login/logout, session persistence.
  */
 import { create } from "zustand";
+import { apiUrl } from "../lib/api";
 
 interface User {
   id: number;
@@ -32,7 +33,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   login: async (username: string, password: string) => {
     set({ loading: true, error: null });
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch(apiUrl("/api/auth/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
