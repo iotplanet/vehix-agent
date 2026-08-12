@@ -1,9 +1,43 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
-  <!-- Hexagon background -->
-  <path d="M60 8L112 38V98L60 128L8 98V38L60 8Z" fill="#10B981" />
-  <path d="M60 12L107 40V96L60 123L13 96V40L60 12Z" fill="#059669" />
-  <!-- Inner hex -->
-  <path d="M60 20L100 44V88L60 112L20 88V44L60 20Z" fill="#34D399" opacity="0.3" />
-  <!-- Lightning bolt V -->
-  <path d="M48 36L42 62H54L48 88L78 54H64L72 36H48Z" fill="white" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 180" width="200" height="180">
+  <defs>
+    <linearGradient id="glowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00f0ff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#a855f7;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Outer ring -->
+  <circle cx="100" cy="90" r="85" fill="none" stroke="url(#glowGrad)" stroke-width="0.5" opacity="0.2"/>
+
+  <!-- Simple Car Body -->
+  <path d="M 56 72 Q 56 44 100 44 Q 144 44 144 72 L 144 108 Q 144 118 134 118 L 128 118 A 10 10 0 0 1 108 118 L 92 118 A 10 10 0 0 1 72 118 L 66 118 Q 56 118 56 108 Z"
+        fill="none" stroke="url(#glowGrad)" stroke-width="2.2" stroke-linejoin="round" opacity="0.9"/>
+
+  <!-- Windshield -->
+  <rect x="72" y="54" width="56" height="24" rx="8" fill="#020617" stroke="#00f0ff" stroke-width="0.6" opacity="0.5"/>
+
+  <!-- Code Eyes -->
+  <text x="84" y="88" font-family="'JetBrains Mono', 'SF Mono', monospace" font-size="20" font-weight="800" fill="#00f0ff" text-anchor="middle" filter="url(#glow)">&lt;</text>
+  <text x="116" y="88" font-family="'JetBrains Mono', 'SF Mono', monospace" font-size="20" font-weight="800" fill="#00f0ff" text-anchor="middle" filter="url(#glow)">&gt;</text>
+
+  <!-- AI Core -->
+  <circle cx="100" cy="88" r="2.5" fill="#a855f7" opacity="0.9"/>
+
+  <!-- Scan Line -->
+  <line x1="68" y1="82" x2="132" y2="82" stroke="#00f0ff" stroke-width="0.5" opacity="0.3"/>
+
+  <!-- Wheels -->
+  <path d="M 72 118 A 10 10 0 0 0 92 118" fill="none" stroke="#00f0ff" stroke-width="1.5" opacity="0.8"/>
+  <path d="M 108 118 A 10 10 0 0 0 128 118" fill="none" stroke="#00f0ff" stroke-width="1.5" opacity="0.8"/>
+
+  <!-- Top Sensor -->
+  <line x1="100" y1="44" x2="100" y2="36" stroke="#334155" stroke-width="0.8"/>
+  <circle cx="100" cy="34" r="3" fill="#00f0ff" opacity="0.7"/>
 </svg>
