@@ -1,9 +1,11 @@
 """Tool execution node.
 
 Executes tool calls from the plan against the MCP ToolRegistry.
-Features smart parameter filling from user message and previous results.
+Features smart parameter filling from user message and previous results,
+plus concurrent execution of independent tools (no cross-tool args).
 """
 
+import asyncio
 import inspect
 import json
 import re
@@ -37,18 +39,44 @@ class ToolExecutor:
         tool_calls = state.get("tool_calls", [])
         results = list(state.get("tool_results", []))
 
-        executed_count = len(results)
-        if executed_count >= len(tool_calls):
+        if len(results) >= len(tool_calls):
             return {}
 
-        next_call = tool_calls[executed_count]
+        # Execute the next tool sequentially — dependency chains resolve in order
+        item, requires_approval, approval_context = await self._execute_tool(
+            tool_calls[len(results)], state, results
+        )
+        results.append(item)
+
+        # ── Parallel fast path ─────────────────────────────────
+        # If every remaining tool is independent (no cross-tool args),
+        # run them concurrently instead of one LangGraph round-trip each.
+        remaining = tool_calls[len(results):]
+        if remaining and all(self._is_independent(t) for t in remaining):
+            batch = await asyncio.gather(
+                *(self._execute_tool(t, state, results) for t in remaining)
+            )
+            for b_item, b_approval, b_ctx in batch:
+                results.append(b_item)
+                if b_approval and not requires_approval:
+                    requires_approval, approval_context = b_approval, b_ctx
+
+        return {
+            "tool_results": results,
+            "requires_approval": requires_approval,
+            "approval_context": approval_context,
+        }
+
+    async def _execute_tool(
+        self, next_call: dict, state: VehixAgentState, results: list
+    ) -> tuple[dict, bool, dict | None]:
+        """Execute a single tool call. Returns (result_item, requires_approval, approval_context)."""
         tool_name = next_call.get("tool", "")
         args = dict(next_call.get("args", {}))
         tool_def = tool_registry.get(tool_name)
 
         if not tool_def:
-            results.append({"tool": tool_name, "args": args, "result": {"error": f"未知工具: {tool_name}"}})
-            return {"tool_results": results, "requires_approval": False, "approval_context": None}
+            return ({"tool": tool_name, "args": args, "result": {"error": f"未知工具: {tool_name}"}}, False, None)
 
         param_names = self._get_param_names(tool_def)
 
@@ -73,27 +101,20 @@ class ToolExecutor:
                     else:
                         # No DTCs found — skip this tool gracefully
                         skip_msg = "车辆无活跃故障码，跳过冻结帧读取"
-                        results.append({"tool": tool_name, "args": args, "result": {"skipped": True, "message": skip_msg}})
-                        return {"tool_results": results, "requires_approval": False, "approval_context": None}
+                        return ({"tool": tool_name, "args": args, "result": {"skipped": True, "message": skip_msg}}, False, None)
 
         # ── Step 3: Smart fill remaining missing params ──────────
         missing = self._smart_fill(tool_name, args, tool_def, state, results)
         if missing:
-            return {
-                "tool_results": results + [{"tool": tool_name, "args": args, "result": {"error": missing}}],
-                "requires_approval": False, "approval_context": None,
-            }
+            return ({"tool": tool_name, "args": args, "result": {"error": missing}}, False, None)
 
         # ── Step 4: VIN required but not found ───────────────────
         if "vin" in param_names and not args.get("vin"):
             plate = self._extract_plate_from_state(state)
             hint = f" (输入车牌: {plate})" if plate else ""
-            return {
-                "tool_results": results + [{"tool": tool_name, "args": args, "result": {
-                    "error": f"未找到对应车辆{hint}。请确认车牌号正确，或先使用「列出所有在线车辆」查看可用车辆",
-                }}],
-                "requires_approval": False, "approval_context": None,
-            }
+            return ({"tool": tool_name, "args": args, "result": {
+                "error": f"未找到对应车辆{hint}。请确认车牌号正确，或先使用「列出所有在线车辆」查看可用车辆",
+            }}, False, None)
 
         # ── Execute ────────────────────────────────────────────
         result = await tool_registry.call(tool_name, **args)
@@ -108,8 +129,14 @@ class ToolExecutor:
                 "result": result,
             }
 
-        results.append({"tool": tool_name, "args": args, "result": result})
-        return {"tool_results": results, "requires_approval": requires_approval, "approval_context": approval_context}
+        return ({"tool": tool_name, "args": args, "result": result}, requires_approval, approval_context)
+
+    @staticmethod
+    def _is_independent(tool_call: dict) -> bool:
+        """True when the tool needs no data from previous tool results."""
+        if tool_call.get("args_from_dtc"):
+            return False
+        return tool_call.get("args_from") in (None, "vin")
 
     # ── Smart parameter filling ────────────────────────────────
 

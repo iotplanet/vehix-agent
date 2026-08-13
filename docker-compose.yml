@@ -1,36 +1,23 @@
 # Vehix Agent — Docker Compose
 #
-# Architecture: internal nginx aggregates all services; host nginx proxies
-# a single location block to the internal nginx. Only the nginx port is
-# exposed to the host — frontend and backend are internal-only.
-#
-# Add to host nginx config:
-#   location /vehix/ { proxy_pass http://127.0.0.1:8080/; }
+# Architecture: no nginx inside Docker. Frontend and backend each publish
+# a loopback-only port, and the host nginx proxies directly to each service
+# (multiple location blocks — see host-nginx.conf.example):
+#   /vehix/api/  → 127.0.0.1:8081 (backend)
+#   /vehix/      → 127.0.0.1:8080 (frontend)
 #
 # Quick start:
 #   VEHIX_LLM_API_KEY=sk-xxx docker compose up -d
 
 services:
-  # ── Internal Nginx (aggregator) ─────────────────────────────────
-  nginx:
-    build:
-      context: ./nginx
-      dockerfile: Dockerfile
-    ports:
-      - "8080:80"               # Single entry point (host nginx → here)
-    depends_on:
-      backend:
-        condition: service_healthy
-      frontend:
-        condition: service_started
-    restart: unless-stopped
-
   # ── Backend ────────────────────────────────────────────────────
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    # No ports exposed — internal nginx proxies /api/ → backend:8000
+    # Loopback-only: only host nginx (same machine) can reach it.
+    ports:
+      - "127.0.0.1:8081:8000"
     environment:
       - VEHIX_DATABASE_URL=sqlite+aiosqlite:///./vehix.db
       - VEHIX_LLM_API_KEY=${VEHIX_LLM_API_KEY:-}
@@ -57,7 +44,9 @@ services:
       args:
         VITE_AMAP_KEY: ${VITE_AMAP_KEY:-}
         VITE_BASE_URL: ${VITE_BASE_URL:-/vehix/}
-    # No ports exposed — internal nginx proxies /vehix/ → frontend:80
+    # Loopback-only: only host nginx (same machine) can reach it.
+    ports:
+      - "127.0.0.1:8080:80"
     depends_on:
       backend:
         condition: service_healthy

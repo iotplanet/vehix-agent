@@ -95,9 +95,10 @@ function renderTable(data: string[][], key: number) {
   const [header, ...body] = data;
   return (
     <div key={key} className="my-2 overflow-x-auto">
-      <table className="w-full text-xs border-collapse">
-        <thead><tr className="border-b border-zinc-600">{header.map((h, i) => <th key={i} className="text-left text-foreground font-medium p-1.5 whitespace-nowrap">{h}</th>)}</tr></thead>
-        <tbody>{body.map((row, ri) => <tr key={ri} className="border-b border-divider">{row.map((c, ci) => <td key={ci} className="text-default-500 p-1.5 whitespace-nowrap">{renderInline(c)}</td>)}</tr>)}</tbody>
+      {/* w-max: hug content, scroll horizontally when wide (no column stretching) */}
+      <table className="w-max text-xs border-collapse">
+        <thead><tr className="border-b border-zinc-600">{header.map((h, i) => <th key={i} className="text-left text-foreground font-medium p-1.5 truncate max-w-[20rem]">{h}</th>)}</tr></thead>
+        <tbody>{body.map((row, ri) => <tr key={ri} className="border-b border-divider">{row.map((c, ci) => <td key={ci} className="text-default-500 p-1.5 truncate max-w-[20rem]">{renderInline(c)}</td>)}</tr>)}</tbody>
       </table>
     </div>
   );

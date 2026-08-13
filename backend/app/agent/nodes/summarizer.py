@@ -2,37 +2,54 @@
 
 import asyncio
 import json
+import logging
+import time
 
 from langchain_core.runnables import RunnableConfig
 
 from app.agent.state import VehixAgentState
 
-DIAGNOSIS_PROMPT = """你是新能源车三电系统诊断专家。根据以下数据，给出结构化诊断结论。
+logger = logging.getLogger(__name__)
+
+# Intents whose tool results are fully covered by templates — skip the LLM
+# summarizer entirely (no prefill + generation latency, answer is instant).
+TEMPLATE_ONLY_INTENTS = {"vehicle_query", "fleet_stats"}
+
+# Markdown output (not JSON): tokens stream straight to the UI as the final
+# rendered text — no JSON typewriter, no post-generation reformatting.
+DIAGNOSIS_PROMPT = """你是新能源车三电系统诊断专家。根据以下数据，直接输出 Markdown 格式的中文诊断报告（不要输出 JSON）。
 
 ## 诊断数据
 {tool_results}
 
-## 输出格式（严格 JSON）
-{{
-  "summary": "一句话概述（如：车辆整体状态良好，无活跃故障码）",
-  "root_cause": "根因分析（如有故障），无故障则写'无'",
-  "confidence": 85,
-  "severity": "normal|warning|critical",
-  "possible_causes": ["原因1", "原因2"],
-  "steps": ["排查步骤1", "排查步骤2"],
-  "suggested_parts": ["建议备件1"],
-  "should_create_workorder": false,
-  "should_limit_power": false,
-  "next_action": "建议的下一步操作（如：持续监控、建议保养、立即进站等）"
-}}
+## 输出格式（严格遵循）
+## 诊断结论
+**概述**: 一句话概述（如：车辆整体状态良好，无活跃故障码）
+**根因**: 根因分析（如有故障），无故障则写"当前无活跃故障"
+**置信度**: 85%
+**严重程度**: 正常 | 警告 | 严重
+
+### 可能原因
+- 原因1
+- 原因2
+
+### 排查步骤
+1. 排查步骤1
+2. 排查步骤2
+
+### 建议备件
+- 建议备件1
+
+### 下一步建议
+建议的下一步操作（如：持续监控、建议保养、立即进站等）
 
 注意：
-- 如果无故障码，root_cause 写"当前无活跃故障"，severity 为 "normal"，confidence 为 95
+- 如果无故障码，根因写"当前无活跃故障"，严重程度为 正常，置信度为 95
 - 遥测数据异常但无 DTC 时，分析可能的传感器或通信问题
-- 温度异常时，should_limit_power 建议为 true
-- 根据严重程度建议 next_action
+- 温度异常时，下一步建议考虑限制功率
+- 直接输出 Markdown 正文，不要 JSON、不要代码块标记
 
-请输出 JSON："""
+请输出诊断报告："""
 
 SUMMARIZE_PROMPT = """你是维克斯（Vehix），一个专业的新能源车队智能运维助手。
 
@@ -75,6 +92,12 @@ class ResponseSummarizer:
         if not results:
             return {"final_response": self._fallback(intent)}
 
+        # ── Fast path: templates for simple structured queries ──
+        # No LLM round-trip (prompt prefill + generation) needed.
+        if intent in TEMPLATE_ONLY_INTENTS:
+            logger.info("summarizer template fast path (intent=%s)", intent)
+            return {"final_response": self._render_template(results)}
+
         # ── Try LLM (streaming preferred) ────────────────────
         try:
             from app.agent.llm import llm_stream, llm_invoke
@@ -86,7 +109,7 @@ class ResponseSummarizer:
                 prompt = DIAGNOSIS_PROMPT.format(
                     tool_results=json.dumps(formatted, ensure_ascii=False, indent=2),
                 )
-                system_msg = "你是新能源车故障诊断专家。只输出 JSON，不要其他文字。"
+                system_msg = "你是新能源车故障诊断专家。直接输出 Markdown 诊断报告，不要 JSON。"
             else:
                 prompt = SUMMARIZE_PROMPT.format(
                     intent=intent,
@@ -103,6 +126,7 @@ class ResponseSummarizer:
                     token_queue = conf.get("token_queue")
 
             # Try streaming first
+            t0 = time.perf_counter()
             stream = await llm_stream(prompt, system=system_msg, temperature=0.3)
             if stream:
                 full_response = ""
@@ -110,6 +134,8 @@ class ResponseSummarizer:
                     full_response += token
                     if token_queue:
                         token_queue.put_nowait(token)
+                logger.info("summarizer LLM stream %.2fs (intent=%s, prompt=%d chars)",
+                            time.perf_counter() - t0, intent, len(prompt))
                 if full_response.strip():
                     return {"final_response": self._format_diagnosis(full_response) if intent == "fault_diagnosis" else full_response.strip()}
 
@@ -121,6 +147,10 @@ class ResponseSummarizer:
             pass  # LLM unavailable → use templates
 
         # ── Template fallback ─────────────────────────────────
+        return {"final_response": self._render_template(results)}
+
+    def _render_template(self, results: list) -> str:
+        """Render tool results with per-tool templates (no LLM)."""
         parts = []
         for r in results:
             result = r.get("result", {})
@@ -128,8 +158,7 @@ class ResponseSummarizer:
                 parts.append(f"❌ {r['tool']}: {result['error']}")
             else:
                 parts.append(self._format_result(r["tool"], result))
-
-        return {"final_response": "\n\n".join(parts)}
+        return "\n\n".join(parts)
 
     def _format_diagnosis(self, text: str) -> str:
         """Try to parse JSON diagnosis, fall back to raw text."""
@@ -167,18 +196,27 @@ class ResponseSummarizer:
                     formatted.append({"tool": r["tool"], "result": {"error": res["error"]}})
                     continue
 
+                # Telemetry: keep aggregate stats only — raw points are
+                # noise for the LLM and inflate prompt prefill time.
+                if r.get("tool") == "query_telemetry_history" and "stats" in res:
+                    formatted.append({"tool": r["tool"], "result": {
+                        "vin": res.get("vin"), "metric": res.get("metric"),
+                        "hours": res.get("hours"), "stats": res.get("stats"),
+                    }})
+                    continue
+
                 res_clean = {}
                 for k, v in res.items():
-                    if isinstance(v, list) and len(v) > 10:
-                        res_clean[k] = v[:10]
+                    if isinstance(v, list) and len(v) > 5:
+                        res_clean[k] = v[:5]
                         res_clean[f"{k}_truncated"] = f"...共 {len(v)} 条"
-                    elif isinstance(v, str) and len(v) > 500:
-                        res_clean[k] = v[:500] + "..."
+                    elif isinstance(v, str) and len(v) > 300:
+                        res_clean[k] = v[:300] + "..."
                     else:
                         res_clean[k] = v
                 formatted.append({"tool": r["tool"], "result": res_clean})
             else:
-                formatted.append({"tool": r["tool"], "result": str(res)[:500]})
+                formatted.append({"tool": r["tool"], "result": str(res)[:300]})
         return formatted
 
     # ── Template formatters (fallback) ────────────────────────────

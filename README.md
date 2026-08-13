@@ -41,18 +41,26 @@ alembic -c alembic.ini downgrade -1
 
 ```bash
 VEHIX_LLM_API_KEY=sk-xxx VITE_AMAP_KEY=4b3b... docker compose up -d
-# 访问 http://localhost:8000 (后端) / http://localhost:5173 (前端 dev)
+# 访问 http://localhost:8080 (前端) / http://localhost:8081 (后端，仅本机)
 ```
 
 ### 宿主机 nginx 反向代理（HTTPS 子路径）
 
-如果你的服务器已有 HTTPS nginx，将 `host-nginx.conf.example` 中**唯一一个** location 块加入你的 `server {}` 配置：
+Docker 内部没有 nginx：前端和后端各自把端口发布到宿主机回环地址，由宿主机 nginx 按路径直连各服务：
+
+| 端口（仅 127.0.0.1） | 服务 |
+|---------------------|------|
+| `8080`              | frontend |
+| `8081`              | backend |
+
+如果你的服务器已有 HTTPS nginx，将 `host-nginx.conf.example` 中的 location 块（`/vehix/api/` → 后端、`/vehix/` → 前端等）加入你的 `server {}` 配置：
 
 ```nginx
-location /vehix/ { proxy_pass http://127.0.0.1:8080/; }
+location /vehix/api/ { proxy_pass http://127.0.0.1:8081/api/; }
+location /vehix/     { proxy_pass http://127.0.0.1:8080/; }
 ```
 
-Docker 内部由 nginx 聚合容器统一路由到前端和后端，宿主机只需这一条规则。
+（完整配置含 `/vehix/mcp/`、`/vehix/docs`、`/vehix/openapi.json` 路由及 SSE 所需超时设置，见 `host-nginx.conf.example`。）
 
 然后启动容器：
 

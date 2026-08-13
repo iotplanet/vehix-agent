@@ -1,11 +1,64 @@
 # Vehix Agent — host nginx config snippet
 #
-# Add this SINGLE location block inside your existing HTTPS server {} block.
-# The internal Docker nginx handles all sub-routing (frontend, API, MCP, docs).
-# Assumes docker compose is running with the nginx aggregator on :8080.
+# Add these location blocks inside your existing HTTPS server {} block.
+# Docker Compose publishes loopback-only ports (see docker-compose.yml):
+#   frontend → 127.0.0.1:8080
+#   backend  → 127.0.0.1:8081
 #
-# Architecture: Host Nginx → Internal Nginx (aggregator) → backend / frontend
+# Architecture: Host Nginx → frontend / backend directly (no nginx in Docker).
+# Nginx picks the longest matching prefix, so /vehix/api/ wins over /vehix/
+# regardless of block order.
+#
+# SSE note: backend sends X-Accel-Buffering: no, so nginx streams responses
+# without buffering; the long read/send timeouts below keep agent streams alive.
 
+# ── Backend API ─────────────────────────────────────────────────
+# /vehix/api/...  →  backend /api/...  (strips /vehix, keeps /api)
+location /vehix/api/ {
+    proxy_pass http://127.0.0.1:8081/api/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 120s;
+    proxy_send_timeout 120s;
+}
+
+# ── MCP endpoint ────────────────────────────────────────────────
+# /vehix/mcp/sse + /vehix/mcp/messages  →  backend /mcp/...
+location /vehix/mcp/ {
+    proxy_pass http://127.0.0.1:8081/mcp/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 120s;
+    proxy_send_timeout 120s;
+}
+
+# ── API docs (optional) ─────────────────────────────────────────
+location /vehix/docs {
+    proxy_pass http://127.0.0.1:8081/docs;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location /vehix/openapi.json {
+    proxy_pass http://127.0.0.1:8081/openapi.json;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# ── Frontend SPA (default) ──────────────────────────────────────
+# /vehix/...  →  frontend /...  (strips /vehix)
 location /vehix/ {
     proxy_pass http://127.0.0.1:8080/;
     proxy_http_version 1.1;
@@ -14,5 +67,4 @@ location /vehix/ {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_read_timeout 120s;
-    proxy_send_timeout 120s;
 }

@@ -94,9 +94,17 @@ html, body, #root {
   color: #fafafa;
 }
 
-/* Tables */
+/* Table scroll container — blocks re-render as the stream grows;
+   a wide table scrolls horizontally instead of stretching the bubble. */
+.streaming-markdown .stable-block,
+.streaming-markdown .streaming-block {
+  overflow-x: auto;
+}
+
+/* Tables hug their content (max-content) so each column keeps its
+   natural width while streaming — no reflow jitter. */
 .streaming-markdown table {
-  width: 100%;
+  width: max-content;
   border-collapse: collapse;
   font-size: 0.75rem;
   margin: 0.5rem 0;
@@ -108,12 +116,18 @@ html, body, #root {
   padding: 0.375rem 0.5rem;
   border-bottom: 1px solid #52525b;
   white-space: nowrap;
+  max-width: 20rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .streaming-markdown td {
   color: #a1a1aa;
   padding: 0.375rem 0.5rem;
   border-bottom: 1px solid rgb(39 39 42 / 0.5);
   white-space: nowrap;
+  max-width: 20rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Blockquote */

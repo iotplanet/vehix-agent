@@ -1,9 +1,13 @@
-"""Intent classification node — LLM with keyword fallback."""
+"""Intent classification node — keyword rules first, LLM fallback."""
 
 import json
+import logging
 import re
+import time
 
 from app.agent.state import VehixAgentState
+
+logger = logging.getLogger(__name__)
 
 PLATE_PATTERN = re.compile(
     r"([京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤川青藏琼])"
@@ -63,7 +67,12 @@ LLM_PROMPT = """你是一个新能源车队运维助手的意图分类器。分�
 
 
 class IntentRouter:
-    """Classify user intent — LLM first, keyword fallback."""
+    """Classify user intent — keyword rules first, LLM fallback.
+
+    Keyword/regex matching costs <1ms and covers most fleet-ops phrasing.
+    The LLM is only consulted when rules don't match, avoiding a full LLM
+    round-trip (TTFT + generation) on every request.
+    """
 
     async def __call__(self, state: VehixAgentState) -> dict:
         user_msg = self._get_user_message(state)
@@ -73,29 +82,30 @@ class IntentRouter:
         intent = "general"
         plate_no = None
 
-        # ── Try LLM ──────────────────────────────────────────
-        try:
-            from app.agent.llm import llm_invoke
-            result = await llm_invoke(user_msg, system=LLM_PROMPT, temperature=0.1)
-            if result:
-                result = result.strip()
-                if result.startswith("```"):
-                    result = result.strip("`").replace("json\n", "", 1)
-                data = json.loads(result)
-                intent = data.get("intent", "general")
-                plate_no = data.get("plate_no")
-        except Exception:
-            pass  # LLM unavailable or parse error → use keywords
+        # ── Fast path: keyword rules (no LLM) ────────────────
+        intent = self._classify_keywords(user_msg)
+        plate_no = self._extract_plate(user_msg)
 
-        # ── Keyword fallback ─────────────────────────────────
+        # ── LLM fallback: only when rules don't match ─────────
         if intent == "general":
-            intent = self._classify_keywords(user_msg)
+            t0 = time.perf_counter()
+            try:
+                from app.agent.llm import llm_invoke
+                result = await llm_invoke(user_msg, system=LLM_PROMPT, temperature=0.1)
+                if result:
+                    result = result.strip()
+                    if result.startswith("```"):
+                        result = result.strip("`").replace("json\n", "", 1)
+                    data = json.loads(result)
+                    intent = data.get("intent", "general")
+                    plate_no = plate_no or data.get("plate_no")
+            except Exception:
+                pass  # LLM unavailable or parse error → keep keyword result
+            logger.info("intent via LLM %.2fs → %s", time.perf_counter() - t0, intent)
+        else:
+            logger.info("intent via keywords → %s", intent)
 
-        # ── Extract plate/VIN ────────────────────────────────
-        if not plate_no:
-            plate_no = self._extract_plate(user_msg)
-
-        # Resolve to VIN
+        # ── Resolve plate/VIN ────────────────────────────────
         vin = None
         if plate_no:
             vin = await self._resolve_plate(plate_no)
@@ -114,13 +124,28 @@ class IntentRouter:
                 return str(m.content)
         return ""
 
-    @staticmethod
-    def _classify_keywords(text: str) -> str:
+    # Metric word + question phrasing → asking about a current value
+    # (e.g. "SOH是多少", "充电效率怎么样") — beats the raw keyword table,
+    # where "SOH"→predictive_maintain and "充电"→command_dispatch would misfire.
+    QUERY_METRICS = ["soc", "soh", "电量", "里程", "温度", "速度", "胎压", "效率",
+                     "电压", "电流", "绝缘"]
+    QUERY_QUESTIONS = ["多少", "怎么样", "如何", "呢", "吗", "在哪", "什么", "情况", "分析"]
+
+    @classmethod
+    def _classify_keywords(cls, text: str) -> str:
         text_lower = text.lower()
+        if (any(m in text_lower for m in cls.QUERY_METRICS)
+                and any(q in text_lower for q in cls.QUERY_QUESTIONS)):
+            return "vehicle_query"
         for intent, keywords in INTENT_KEYWORDS.items():
             for kw in keywords:
-                if kw in text_lower:
+                if kw.lower() in text_lower:
                     return intent
+        # Bare follow-ups (e.g. "这台呢？", "怎么样？", "SOC？") imply a
+        # query about the current vehicle → vehicle_query
+        for pattern in FOLLOWUP_PATTERNS:
+            if re.search(pattern, text):
+                return "vehicle_query"
         return "general"
 
     @staticmethod

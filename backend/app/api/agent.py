@@ -11,6 +11,8 @@ POST /api/agent/run → SSE stream:
 
 import asyncio
 import json
+import logging
+import time
 import uuid
 from datetime import datetime
 
@@ -23,6 +25,8 @@ from app.agent.graph import get_graph
 from app.agent.state import VehixAgentState
 
 router = APIRouter(tags=["agent"])
+
+logger = logging.getLogger(__name__)
 
 
 @router.post("/agent/run")
@@ -65,6 +69,8 @@ async def agent_run(request: Request):
     }
 
     async def event_stream():
+        start_ts = time.perf_counter()
+        first_token_at: float | None = None
         try:
             username = current_user.username if current_user else None
 
@@ -95,6 +101,10 @@ async def agent_run(request: Request):
                 # LLM text tokens
                 try:
                     text = await asyncio.wait_for(llm_token_queue.get(), timeout=0.05)
+                    if first_token_at is None:
+                        first_token_at = time.perf_counter()
+                        logger.info("agent first token after %.2fs (thread=%s)",
+                                    first_token_at - start_ts, thread_id)
                     yield _sse("token", {"text": text})
                     continue
                 except asyncio.TimeoutError:
@@ -107,6 +117,8 @@ async def agent_run(request: Request):
                     pass
 
             result = await graph_task
+            logger.info("agent graph total %.2fs (thread=%s)",
+                        time.perf_counter() - start_ts, thread_id)
 
             # Post-graph: approval, final message (tool calls already streamed during run)
             if result:
@@ -143,13 +155,19 @@ async def _run_graph(graph, state, config, token_queue, tool_queue):
     """Execute graph.astream() — push tool events to tool_queue, LLM tokens to token_queue."""
     result = dict(state)
     prev_tool_count = 0
+    # LangGraph yields a chunk after each node finishes, so the gap between
+    # consecutive yields ≈ that node's duration (first node includes startup).
+    prev_ts = time.perf_counter()
 
     try:
         async for chunk in graph.astream(state, config):
             for node_name, node_output in chunk.items():
+                now = time.perf_counter()
+                duration_ms = round((now - prev_ts) * 1000, 1)
+                prev_ts = now
                 ts = datetime.utcnow().isoformat()
                 tool_queue.put_nowait({"type": "node_start", "data": {"node": node_name, "ts": ts}})
-                tool_queue.put_nowait({"type": "node_end", "data": {"node": node_name, "ts": ts}})
+                tool_queue.put_nowait({"type": "node_end", "data": {"node": node_name, "ts": ts, "duration_ms": duration_ms}})
 
                 # Tool results → tool_queue (NOT token_queue!)
                 results = node_output.get("tool_results", [])
