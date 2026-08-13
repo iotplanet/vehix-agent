@@ -8,6 +8,7 @@ import { motion, useAnimationControls } from "framer-motion";
 import { useAgentStream } from "../../hooks/useAgentStream";
 import AgentSidePanel from "./AgentSidePanel";
 import Markdown from "./Markdown";
+import StreamingMarkdown from "./StreamingMarkdown";
 
 const QUICK_PROMPTS = [
   "列出所有在线车辆",
@@ -213,7 +214,7 @@ export default function AgentConsole() {
                       <img src="/vehix-assistant.svg" alt="维克斯" className="w-4 h-4 rounded-full" />
                       维克斯
                     </div>
-                    <Markdown content={partialResponse} className="leading-relaxed" />
+                    <StreamingMarkdown content={partialResponse} className="leading-relaxed" />
                   </div>
                 </div>
               )}

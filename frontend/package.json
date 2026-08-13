@@ -16,6 +16,7 @@
     "echarts": "^5.5.0",
     "framer-motion": "^13.0.0",
     "lucide-react": "^1.29.0",
+    "marked": "^18.0.9",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^6.26.0",
