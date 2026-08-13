@@ -4,6 +4,9 @@ import { Button, Drawer } from "@heroui/react";
 import { Car, Bot, Radio, LogOut, Menu, Wrench } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 
+// Sub-path deployment: prefix public assets so they resolve under /vehix/.
+const BASE_URL = import.meta.env.VITE_BASE_URL || "/";
+
 const NAV_ITEMS = [
   { to: "/fleet", label: "车队地图", icon: Car },
   { to: "/agent", label: "Agent 控制台", icon: Bot },
@@ -55,7 +58,7 @@ function SidebarContent({ user, onNav, onLogout }: {
     <>
       <div className="flex items-center px-3 py-2 mb-6">
         <h1 className="text-lg font-bold text-primary flex items-center gap-2">
-          <img src="/vehix-logo.svg" alt="Vehix" className="w-7 h-7" />
+          <img src={`${BASE_URL}vehix-logo.svg`} alt="Vehix" className="w-7 h-7" />
           Vehix Agent
         </h1>
       </div>
@@ -114,7 +117,7 @@ export default function Layout() {
         {/* Mobile top bar */}
         <div className="lg:hidden flex items-center gap-3 px-4 py-3 bg-content1 border-b border-divider flex-shrink-0" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
           <button onClick={() => setSidebarOpen(true)} className="text-default-500"><Menu size={22} /></button>
-          <img src="/vehix-logo.svg" alt="Vehix" className="w-6 h-6" />
+          <img src={`${BASE_URL}vehix-logo.svg`} alt="Vehix" className="w-6 h-6" />
           <h1 className="text-base font-bold text-primary">Vehix Agent</h1>
           {user && <div className="ml-auto text-xs text-default-500 truncate max-w-[80px]">{user.display_name}</div>}
         </div>

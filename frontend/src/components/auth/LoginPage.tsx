@@ -4,6 +4,9 @@ import { Card, CardContent, CardHeader, Button, Input, TextField, Label, FieldEr
 import { LogIn } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 
+// Sub-path deployment: prefix public assets so they resolve under /vehix/.
+const BASE_URL = import.meta.env.VITE_BASE_URL || "/";
+
 export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -23,7 +26,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <Card className="w-full max-w-sm mx-auto">
         <CardHeader className="flex-col gap-2 pt-8 pb-0">
-          <img src="/vehix-logo.svg" alt="Vehix" className="w-14 h-14" />
+          <img src={`${BASE_URL}vehix-logo.svg`} alt="Vehix" className="w-14 h-14" />
           <h1 className="text-lg font-bold text-foreground">Vehix Agent</h1>
           <p className="text-xs text-default-400">智能车队运维平台 · 维克斯 AI 助手</p>
         </CardHeader>

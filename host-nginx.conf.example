@@ -12,6 +12,11 @@
 # SSE note: backend sends X-Accel-Buffering: no, so nginx streams responses
 # without buffering; the long read/send timeouts below keep agent streams alive.
 
+# ── Canonical entry redirect (no trailing slash → with slash) ──
+location = /vehix {
+    return 301 /vehix/;
+}
+
 # ── Backend API ─────────────────────────────────────────────────
 # /vehix/api/...  →  backend /api/...  (strips /vehix, keeps /api)
 location /vehix/api/ {

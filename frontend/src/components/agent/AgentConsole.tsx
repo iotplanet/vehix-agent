@@ -10,6 +10,9 @@ import AgentSidePanel from "./AgentSidePanel";
 import Markdown from "./Markdown";
 import StreamingMarkdown from "./StreamingMarkdown";
 
+// Sub-path deployment: prefix public assets so they resolve under /vehix/.
+const BASE_URL = import.meta.env.VITE_BASE_URL || "/";
+
 const QUICK_PROMPTS = [
   "列出所有在线车辆",
   "京A·D1024 有什么故障？",
@@ -176,7 +179,7 @@ export default function AgentConsole() {
                   }`}>
                     {msg.role !== "user" && (
                       <div className="flex items-center gap-1.5 text-xs text-emerald-400 mb-1 font-medium">
-                        <img src="/vehix-assistant.svg" alt="维克斯" className="w-4 h-4 rounded-full" />
+                        <img src={`${BASE_URL}vehix-assistant.svg`} alt="维克斯" className="w-4 h-4 rounded-full" />
                         维克斯
                       </div>
                     )}
@@ -211,7 +214,7 @@ export default function AgentConsole() {
                 <div className="flex justify-start">
                   <div className="max-w-[90%] lg:max-w-[80%] rounded-xl px-4 py-3 text-sm bg-content2 text-foreground">
                     <div className="flex items-center gap-1.5 text-xs text-emerald-400 mb-1 font-medium">
-                      <img src="/vehix-assistant.svg" alt="维克斯" className="w-4 h-4 rounded-full" />
+                      <img src={`${BASE_URL}vehix-assistant.svg`} alt="维克斯" className="w-4 h-4 rounded-full" />
                       维克斯
                     </div>
                     <StreamingMarkdown content={partialResponse} className="leading-relaxed" />
