@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@amap/amap-jsapi-loader": "^1.0.1",
-    "@heroui/react": "^3.2.3",
+    "@heroui/react": "^3.2.4",
     "echarts": "^5.5.0",
     "framer-motion": "^13.0.0",
     "lucide-react": "^1.29.0",

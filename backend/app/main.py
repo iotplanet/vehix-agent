@@ -106,6 +106,7 @@ def _register_routers():
     from app.auth.router import router as auth_router
     from app.api.llm import router as llm_router
     from app.admin.router import router as admin_router
+    from app.api.ota import router as ota_router
 
     app.include_router(auth_router)  # /api/auth/*
     app.include_router(llm_router)   # /api/llm/*
@@ -114,6 +115,7 @@ def _register_routers():
     app.include_router(telemetry_router, prefix="/api")
     app.include_router(commands_router, prefix="/api")
     app.include_router(agent_router, prefix="/api")
+    app.include_router(ota_router, prefix="/api")
     app.include_router(mcp_router)
 
 
