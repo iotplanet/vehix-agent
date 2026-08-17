@@ -184,7 +184,7 @@ impl CommandGateway {
 
     /// Check if a command is high-risk (requires approval).
     fn is_high_risk(command: &str) -> bool {
-        matches!(command, "limit_power" | "remote_shutdown")
+        matches!(command, "limit_power" | "clear_dtc" | "remote_shutdown")
     }
 
     /// Prune old nonces to prevent unbounded memory growth.

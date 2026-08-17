@@ -43,11 +43,19 @@ POST /api/llm/test     # 测试新 Key 是否有效（不保存）
 ### 认证
 
 ```bash
-VEHIX_JWT_SECRET=<openssl rand -hex 32>   # 生产必须更换
+VEHIX_JWT_SECRET=<openssl rand -hex 32>   # 生产必须更换（默认值会打启动告警）
 VEHIX_JWT_EXPIRE_MINUTES=15
 VEHIX_JWT_REFRESH_DAYS=7
 VEHIX_INITIAL_SUPERUSER_PASSWORD=admin123
+VEHIX_INITIAL_ADMIN_PASSWORD=admin123
+VEHIX_INITIAL_OPERATOR_PASSWORD=operator123
+VEHIX_INITIAL_VIEWER_PASSWORD=viewer123
+
+# MCP HTTP 端点（默认关闭；Agent 始终使用进程内 ToolRegistry）
+# VEHIX_MCP_HTTP_ENABLED=false
 ```
+
+健康检查：`GET /api/health` 仅探测 DB + 模拟器。LLM 连通性请用需鉴权的 `GET /api/llm/status` / `POST /api/llm/test`。
 
 首次启动自动创建 4 个账户：
 

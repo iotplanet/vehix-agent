@@ -35,7 +35,15 @@ export interface ChatMessage {
 
 export type AgentStatus = "idle" | "streaming" | "waiting_approval" | "done" | "error";
 
+function newThreadId(): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+  }
+  return `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
 interface AgentState {
+  threadId: string;
   messages: ChatMessage[];
   thoughtSteps: ThoughtStep[];
   toolCalls: ToolCall[];
@@ -51,12 +59,15 @@ interface AgentState {
 
 let abortController: AbortController | null = null;
 
+const SYSTEM_MSG: ChatMessage = {
+  role: "system",
+  content: "你好！我是维克斯（Vehix），你的智能车队运维助手。可以帮你查询车辆状态、诊断故障、下发车控命令、管理 OTA 升级。",
+  timestamp: new Date().toISOString(),
+};
+
 export const useAgentStore = create<AgentState>((set, get) => ({
-  messages: [{
-    role: "system",
-    content: "你好！我是维克斯（Vehix），你的智能车队运维助手。可以帮你查询车辆状态、诊断故障、下发车控命令、管理 OTA 升级。",
-    timestamp: new Date().toISOString(),
-  }],
+  threadId: newThreadId(),
+  messages: [{ ...SYSTEM_MSG, timestamp: new Date().toISOString() }],
   thoughtSteps: [],
   toolCalls: [],
   status: "idle",
@@ -86,15 +97,21 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       const response = await apiFetch("/api/agent/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message, thread_id: get().threadId }),
         signal: abortController.signal,
       });
 
-      if (!response.ok || !response.body) throw new Error(`Agent error: ${response.status}`);
+      if (!response.ok || !response.body) {
+        const msg = response.status === 401
+          ? "登录已过期，请重新登录"
+          : `Agent error: ${response.status}`;
+        throw new Error(msg);
+      }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let receivedMessage = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -124,7 +141,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                 break;
               }
               case "message": {
-                // Final message → add to messages directly, don't touch partialResponse
+                receivedMessage = true;
                 const msg: ChatMessage = { role: "assistant", content: data.content || "", timestamp: new Date().toISOString() };
                 set((s) => ({ messages: [...s.messages, msg] }));
                 break;
@@ -143,8 +160,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       // Stream done — final message already added via 'message' event
       const currentStatus = get().status;
       if (currentStatus !== "waiting_approval") {
-        // Only add fallback if no message event was received
-        if (!get().partialResponse) {
+        if (!receivedMessage && !get().partialResponse) {
           const msg: ChatMessage = { role: "assistant", content: "处理完成", timestamp: new Date().toISOString() };
           set((s) => ({ messages: [...s.messages, msg] }));
         }
@@ -191,7 +207,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   clearConversation: () => {
     if (abortController) abortController.abort();
     set({
-      messages: get().messages.slice(0, 1),
+      threadId: newThreadId(),
+      messages: [{ ...SYSTEM_MSG, timestamp: new Date().toISOString() }],
       thoughtSteps: [], toolCalls: [],
       status: "idle", pendingApproval: null,
       partialResponse: "", error: null,

@@ -64,19 +64,19 @@ export default function AgentConsole() {
   }, [isStreaming, isWaitingApproval]);
 
   return (
-    <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 h-[calc(100dvh-56px)] lg:h-[calc(100dvh-48px)]">
+    <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 h-[calc(100dvh-7.5rem)] sm:h-[calc(100dvh-6.5rem)] lg:h-[calc(100dvh-3rem)] min-h-[420px]">
       {/* ── Chat Panel ─────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        <h1 className="text-xl font-bold mb-4">Agent 控制台</h1>
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 safe-pb">
+        <h1 className="page-title mb-3 sm:mb-4">Agent 控制台</h1>
 
-        <Card className="flex-1 mb-3 bg-content1 border-divider overflow-hidden">
+        <Card className="flex-1 mb-3 overflow-hidden bg-content1 border-divider">
           <CardContent className={`p-4 ${isEmpty ? "h-full flex items-center justify-center overflow-hidden" : "overflow-y-auto space-y-3"}`}>
             {isEmpty ? (
               /* ── Empty state: greeting + auto-scrolling quick prompts ── */
               <div className="flex flex-col items-center justify-center w-full max-w-md mx-auto gap-6">
                 {/* Greeting */}
                 <div className="text-center">
-                  <div className="text-4xl mb-3">👋</div>
+                  <img src={`${BASE_URL}vehix-assistant.svg`} alt="" className="w-12 h-12 mx-auto mb-3 rounded-full opacity-90" />
                   <h2 className="text-lg font-semibold text-foreground mb-1">你好，我是维克斯</h2>
                   <p className="text-sm text-default-400">有什么可以帮你的？</p>
                 </div>
@@ -96,9 +96,9 @@ export default function AgentConsole() {
                       {[...QUICK_PROMPTS, ...QUICK_PROMPTS].map((prompt, i) => (
                         <Chip
                           key={`${prompt}-${i}`}
-                          size="md"
+                          size="sm"
                           variant="secondary"
-                          className="cursor-pointer text-sm text-default-400 hover:text-foreground hover:bg-default-100 transition-colors py-2 px-5 max-w-full"
+                          className="cursor-pointer text-xs sm:text-sm text-default-400 hover:text-foreground hover:bg-default-100 transition-colors max-w-full"
                           onClick={() => handlePromptClick(prompt)}
                         >
                           <ChipLabel>{prompt}</ChipLabel>
@@ -119,10 +119,10 @@ export default function AgentConsole() {
               if (msg.role === "approval" && msg.approval) {
                 return (
                   <div key={i} className="flex justify-start">
-                    <div className="max-w-[85%] rounded-xl border border-yellow-500/30 bg-yellow-500/5 overflow-hidden">
-                      <div className="flex items-center gap-2 px-4 py-3 bg-yellow-500/10 border-b border-yellow-500/20">
-                        <ShieldAlert size={18} className="text-yellow-400" />
-                        <span className="text-sm font-medium text-yellow-400">需要审批</span>
+                    <div className="max-w-[85%] rounded-xl border border-warning/30 bg-warning/5 overflow-hidden">
+                      <div className="flex items-center gap-2 px-4 py-3 bg-warning/10 border-b border-warning/20">
+                        <ShieldAlert size={18} className="text-warning" />
+                        <span className="text-sm font-medium text-warning">需要审批</span>
                       </div>
                       <div className="p-4 space-y-2 text-sm">
                         <Row label="命令" value={msg.approval.command} />
@@ -159,8 +159,8 @@ export default function AgentConsole() {
                   <div key={i} className="flex justify-start">
                     <div className={`max-w-[90%] lg:max-w-[80%] rounded-xl px-4 py-3 text-sm border ${
                       msg.approved
-                        ? "bg-green-500/10 border-green-500/30 text-green-400"
-                        : "bg-red-500/10 border-red-500/30 text-red-400"
+                        ? "bg-success/10 border-success/30 text-success"
+                        : "bg-danger/10 border-danger/30 text-danger"
                     }`}>
                       {msg.content}
                     </div>
@@ -174,11 +174,11 @@ export default function AgentConsole() {
                 <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[90%] lg:max-w-[80%] rounded-xl px-4 py-3 text-sm ${
                     msg.role === "user"
-                      ? "bg-blue-600 text-white"
-                      : "bg-content2 text-foreground"
+                      ? "bg-primary text-white border border-primary"
+                      : "bg-content2 border border-divider text-foreground"
                   }`}>
                     {msg.role !== "user" && (
-                      <div className="flex items-center gap-1.5 text-xs text-emerald-400 mb-1 font-medium">
+                      <div className="flex items-center gap-1.5 text-xs text-primary mb-1 font-medium">
                         <img src={`${BASE_URL}vehix-assistant.svg`} alt="维克斯" className="w-4 h-4 rounded-full" />
                         维克斯
                       </div>
@@ -195,7 +195,7 @@ export default function AgentConsole() {
                 <div className="flex justify-start">
                   <div className="max-w-[90%] lg:max-w-[80%] rounded-xl px-4 py-3 text-sm bg-content2/50 text-default-500">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                      <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                       <span>
                         {thoughtSteps.length === 0 && "正在理解意图..."}
                         {thoughtSteps.length >= 1 && thoughtSteps[thoughtSteps.length - 1].node === "router" && "正在分析意图..."}
@@ -213,7 +213,7 @@ export default function AgentConsole() {
               {partialResponse && (
                 <div className="flex justify-start">
                   <div className="max-w-[90%] lg:max-w-[80%] rounded-xl px-4 py-3 text-sm bg-content2 text-foreground">
-                    <div className="flex items-center gap-1.5 text-xs text-emerald-400 mb-1 font-medium">
+                    <div className="flex items-center gap-1.5 text-xs text-primary mb-1 font-medium">
                       <img src={`${BASE_URL}vehix-assistant.svg`} alt="维克斯" className="w-4 h-4 rounded-full" />
                       维克斯
                     </div>
@@ -227,12 +227,11 @@ export default function AgentConsole() {
         </Card>
 
         {error && (
-          <div className="mb-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-sm text-red-400">{error}</div>
+          <div className="mb-3 p-3 rounded-lg border text-sm bg-danger/10 border-danger/30 text-danger">{error}</div>
         )}
 
         {/* Mobile: quick prompts row + action bar */}
         <div className="lg:hidden flex flex-col gap-2 mb-2">
-          {/* Horizontal scroll quick prompts */}
           {isEmpty && (
             <ScrollShadow orientation="horizontal" className="flex gap-1.5 pb-1 -mx-1 px-1">
               {QUICK_PROMPTS.slice(0, 5).map((p) => (
@@ -241,7 +240,7 @@ export default function AgentConsole() {
                   className="cursor-pointer whitespace-nowrap text-xs text-default-500 hover:text-foreground flex-shrink-0"
                   onClick={() => handlePromptClick(p)}
                 >
-                  <ChipLabel>{p}</ChipLabel>
+                  <ChipLabel>{p.length > 14 ? `${p.slice(0, 14)}…` : p}</ChipLabel>
                 </Chip>
               ))}
             </ScrollShadow>
@@ -259,13 +258,13 @@ export default function AgentConsole() {
         </div>
 
         {/* Input */}
-        <form onSubmit={handleSubmit} className="flex gap-2">
+        <form onSubmit={handleSubmit} className="flex gap-2 items-stretch">
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={isWaitingApproval ? "请先处理审批..." : "输入指令，如：京A·D1024 有什么故障？"}
+            placeholder={isWaitingApproval ? "请先处理审批..." : "输入指令…"}
             disabled={isStreaming || isWaitingApproval}
-            className="flex-1 bg-content1 border-divider text-foreground rounded-xl"
+            className="flex-1 min-w-0 bg-content1 border-divider text-foreground rounded-xl text-base"
           />
           <Button
             type="button"
@@ -273,6 +272,7 @@ export default function AgentConsole() {
             isIconOnly
             isDisabled
             aria-label="语音交互即将支持"
+            className="flex-shrink-0"
           >
             <Mic size={18} />
           </Button>
@@ -281,6 +281,8 @@ export default function AgentConsole() {
             variant="primary"
             isIconOnly
             isDisabled={!input.trim() || isStreaming || isWaitingApproval}
+            className="flex-shrink-0"
+            aria-label="发送"
           >
             <Send size={18} />
           </Button>
@@ -329,7 +331,7 @@ function Row({ label, value, mono, warn }: { label: string; value: string; mono?
   return (
     <div className="flex justify-between">
       <span className="text-default-400">{label}</span>
-      <span className={`${mono ? "font-mono text-xs" : "font-medium"} ${warn ? "text-yellow-400" : "text-foreground"}`}>
+      <span className={`${mono ? "font-mono text-xs" : "font-medium"} ${warn ? "text-warning" : "text-foreground"}`}>
         {value}
       </span>
     </div>

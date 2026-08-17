@@ -190,3 +190,37 @@ async def rollback_ota(task_id: int) -> dict:
         task.completed_at = datetime.utcnow()
         await db.commit()
         return {"task_id": task_id, "status": "rolled_back", "message": f"OTA任务 {task_id} 已回滚"}
+
+
+@tool_registry.tool(
+    name="pause_ota_task",
+    description="暂停进行中的OTA升级任务",
+)
+async def pause_ota_task(task_id: int) -> dict:
+    async with async_session() as db:
+        result = await db.execute(select(OTATask).where(OTATask.id == task_id))
+        task = result.scalar_one_or_none()
+        if not task:
+            return {"error": f"未找到OTA任务: {task_id}"}
+        if task.status not in ("created", "in_progress"):
+            return {"error": f"任务状态为 {task.status}，无法暂停"}
+        task.status = "paused"
+        await db.commit()
+        return {"task_id": task_id, "status": "paused", "message": f"OTA任务 {task_id} 已暂停"}
+
+
+@tool_registry.tool(
+    name="resume_ota_task",
+    description="继续已暂停的OTA升级任务",
+)
+async def resume_ota_task(task_id: int) -> dict:
+    async with async_session() as db:
+        result = await db.execute(select(OTATask).where(OTATask.id == task_id))
+        task = result.scalar_one_or_none()
+        if not task:
+            return {"error": f"未找到OTA任务: {task_id}"}
+        if task.status != "paused":
+            return {"error": f"任务状态为 {task.status}，无法继续"}
+        task.status = "in_progress" if task.current_batch > 0 else "created"
+        await db.commit()
+        return {"task_id": task_id, "status": task.status, "message": f"OTA任务 {task_id} 已继续"}

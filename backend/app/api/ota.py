@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.auth.dependencies import RequireOperator
+from app.auth.dependencies import RequireOperator, RequireViewer
 from app.database import get_db
 from app.models.ota_task import OTATask
 from app.models.user import User
@@ -35,7 +35,10 @@ class OTACreateRequest(BaseModel):
 
 
 @router.get("/ota/tasks")
-async def list_ota_tasks(db=Depends(get_db)):
+async def list_ota_tasks(
+    db=Depends(get_db),
+    _user: User = Depends(RequireViewer),
+):
     """List all OTA tasks, newest first."""
     result = await db.execute(select(OTATask).order_by(OTATask.id.desc()))
     tasks = [t.to_dict() for t in result.scalars().all()]
@@ -71,7 +74,10 @@ async def create_ota_task(
 
 
 @router.get("/ota/tasks/{task_id}")
-async def get_ota_task(task_id: int):
+async def get_ota_task(
+    task_id: int,
+    _user: User = Depends(RequireViewer),
+):
     """Get one OTA task with batch plan and per-vehicle stages."""
     from app.mcp.ota_mcp import track_ota_task
     data = await track_ota_task(task_id)
@@ -86,16 +92,42 @@ async def rollback_ota_task(
     db=Depends(get_db),
     current_user: User = Depends(RequireOperator),
 ):
-    """Rollback an active OTA task."""
+    """Rollback an active or paused OTA task."""
     result = await db.execute(select(OTATask).where(OTATask.id == task_id))
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(404, f"未找到OTA任务: {task_id}")
-    if task.status not in ("created", "in_progress"):
+    if task.status not in ("created", "in_progress", "paused"):
         raise HTTPException(400, f"任务状态为 {task.status}，无法回滚")
 
     from app.mcp.ota_mcp import rollback_ota
     data = await rollback_ota(task_id)
+    if isinstance(data, dict) and data.get("error"):
+        raise HTTPException(400, data["error"])
+    return data
+
+
+@router.post("/ota/tasks/{task_id}/pause")
+async def pause_ota_task(
+    task_id: int,
+    _user: User = Depends(RequireOperator),
+):
+    """Pause an active OTA task."""
+    from app.mcp.ota_mcp import pause_ota_task as _mcp_pause
+    data = await _mcp_pause(task_id)
+    if isinstance(data, dict) and data.get("error"):
+        raise HTTPException(400, data["error"])
+    return data
+
+
+@router.post("/ota/tasks/{task_id}/resume")
+async def resume_ota_task(
+    task_id: int,
+    _user: User = Depends(RequireOperator),
+):
+    """Resume a paused OTA task."""
+    from app.mcp.ota_mcp import resume_ota_task as _mcp_resume
+    data = await _mcp_resume(task_id)
     if isinstance(data, dict) and data.get("error"):
         raise HTTPException(400, data["error"])
     return data

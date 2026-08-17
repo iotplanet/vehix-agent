@@ -2,7 +2,7 @@
  * Fleet-level state — statistics, map viewport.
  */
 import { create } from "zustand";
-import { apiFetch } from "../lib/api";
+import { apiFetch, ensureOk } from "../lib/api";
 
 export interface FleetStats {
   total_vehicles: number;
@@ -29,7 +29,7 @@ export const useFleetStore = create<FleetState>((set) => ({
   fetchStats: async () => {
     set({ loading: true, error: null });
     try {
-      const res = await apiFetch("/api/vehicles");
+      const res = await ensureOk(await apiFetch("/api/vehicles"));
       const data = await res.json();
       const vehicles = data.vehicles || [];
       const online = vehicles.filter((v: { online_status: string }) => v.online_status === "online");
@@ -55,7 +55,7 @@ export const useFleetStore = create<FleetState>((set) => ({
         loading: false,
       });
     } catch (e) {
-      set({ error: String(e), loading: false });
+      set({ error: e instanceof Error ? e.message : String(e), loading: false });
     }
   },
 }));

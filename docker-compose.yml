@@ -7,7 +7,12 @@
 #   /vehix/      → 127.0.0.1:8080 (frontend)
 #
 # Quick start (local build):
-#   VEHIX_LLM_API_KEY=sk-xxx docker compose up -d
+#   VEHIX_LLM_API_KEY=sk-xxx VEHIX_JWT_SECRET=$(openssl rand -hex 32) docker compose up -d
+#
+# Local bare http://localhost:8080 (no /vehix/ subpath):
+#   VITE_BASE_URL=/ VEHIX_LLM_API_KEY=sk-xxx docker compose up -d --build
+#
+# Subpath deploy (default): VITE_BASE_URL=/vehix/
 #
 # Server deployment (pull prebuilt images from ACR, no local build):
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
@@ -23,7 +28,12 @@ services:
     ports:
       - "127.0.0.1:8081:8000"
     environment:
-      - VEHIX_DATABASE_URL=sqlite+aiosqlite:///./vehix.db
+      - VEHIX_DATABASE_URL=sqlite+aiosqlite:///./data/vehix.db
+      - VEHIX_JWT_SECRET=${VEHIX_JWT_SECRET:-change-me-in-production-use-openssl-rand-hex-32}
+      - VEHIX_INITIAL_SUPERUSER_PASSWORD=${VEHIX_INITIAL_SUPERUSER_PASSWORD:-admin123}
+      - VEHIX_INITIAL_ADMIN_PASSWORD=${VEHIX_INITIAL_ADMIN_PASSWORD:-admin123}
+      - VEHIX_INITIAL_OPERATOR_PASSWORD=${VEHIX_INITIAL_OPERATOR_PASSWORD:-operator123}
+      - VEHIX_INITIAL_VIEWER_PASSWORD=${VEHIX_INITIAL_VIEWER_PASSWORD:-viewer123}
       - VEHIX_LLM_API_KEY=${VEHIX_LLM_API_KEY:-}
       - VEHIX_LLM_BASE_URL=${VEHIX_LLM_BASE_URL:-https://api.deepseek.com}
       - VEHIX_LLM_MODEL=${VEHIX_LLM_MODEL:-deepseek-chat}
@@ -32,11 +42,14 @@ services:
       - VEHIX_SIMULATOR_TELEMETRY_INTERVAL_S=5.0
       - VEHIX_SIMULATOR_FAULT_PROBABILITY=0.02
       - VEHIX_JTT808_ENABLED=${VEHIX_JTT808_ENABLED:-false}
+      - VEHIX_MCP_HTTP_ENABLED=${VEHIX_MCP_HTTP_ENABLED:-false}
+    volumes:
+      - backend-data:/app/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
 
   # ── Frontend ───────────────────────────────────────────────────
@@ -85,4 +98,5 @@ services:
         condition: service_started
 
 volumes:
+  backend-data:
   pgdata:

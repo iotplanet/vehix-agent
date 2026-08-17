@@ -25,7 +25,7 @@ ALLOWED_COMMANDS = {
     "unlock_door", "start_hvac", "charge_control",
     "limit_power", "clear_dtc", "remote_shutdown",
 }
-HIGH_RISK_COMMANDS = {"limit_power", "remote_shutdown"}
+HIGH_RISK_COMMANDS = {"limit_power", "clear_dtc", "remote_shutdown"}
 
 # Simple nonce store (in-memory — Rust version uses HashSet with pruning)
 _used_nonces: set[str] = set()

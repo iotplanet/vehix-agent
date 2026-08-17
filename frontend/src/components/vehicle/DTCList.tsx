@@ -59,7 +59,9 @@ export default function DTCList({ vin }: Props) {
                   <Table.Row key={item.code} id={item.code}>
                     <Table.Cell className="font-mono font-semibold">{item.code}</Table.Cell>
                     <Table.Cell>
-                      <Chip size="sm" color="accent"><ChipLabel>{CATEGORY_LABELS[item.cat] || item.cat}</ChipLabel></Chip>
+                      <Chip size="sm" variant="soft" color="accent">
+                        <ChipLabel>{CATEGORY_LABELS[item.cat] || item.cat}</ChipLabel>
+                      </Chip>
                     </Table.Cell>
                     <Table.Cell className="text-xs">{DTC_DESC[item.code] || item.code}</Table.Cell>
                     <Table.Cell>

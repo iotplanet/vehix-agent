@@ -2,7 +2,7 @@
  * Vehicle state — fleet list, selected vehicle twin, telemetry.
  */
 import { create } from "zustand";
-import { apiFetch } from "../lib/api";
+import { apiFetch, ensureOk } from "../lib/api";
 
 export interface VehicleSummary {
   id: number;
@@ -69,6 +69,7 @@ interface VehicleState {
   selectVehicle: (vin: string) => void;
   fetchTwin: (vin: string) => Promise<void>;
   fetchTelemetry: (vin: string, metric: string, hours?: number) => Promise<void>;
+  deleteVehicle: (vin: string) => Promise<void>;
 }
 
 export const useVehicleStore = create<VehicleState>((set, get) => ({
@@ -82,11 +83,11 @@ export const useVehicleStore = create<VehicleState>((set, get) => ({
   fetchVehicles: async () => {
     set({ loading: true, error: null });
     try {
-      const res = await apiFetch("/api/vehicles");
+      const res = await ensureOk(await apiFetch("/api/vehicles"));
       const data = await res.json();
       set({ vehicles: data.vehicles || [], loading: false });
     } catch (e) {
-      set({ error: String(e), loading: false });
+      set({ error: e instanceof Error ? e.message : String(e), loading: false });
     }
   },
 
@@ -97,23 +98,33 @@ export const useVehicleStore = create<VehicleState>((set, get) => ({
 
   fetchTwin: async (vin: string) => {
     try {
-      const res = await apiFetch(`/api/vehicles/${vin}`);
+      const res = await ensureOk(await apiFetch(`/api/vehicles/${vin}`));
       const data = await res.json();
-      set({ twin: data.twin || null });
+      set({ twin: data.twin || null, error: null });
     } catch (e) {
-      set({ error: String(e) });
+      set({ error: e instanceof Error ? e.message : String(e) });
     }
   },
 
   fetchTelemetry: async (vin: string, metric: string, hours = 24) => {
     try {
-      const res = await apiFetch(
+      const res = await ensureOk(await apiFetch(
         `/api/vehicles/${vin}/telemetry?metric=${metric}&hours=${hours}`
-      );
+      ));
       const data = await res.json();
-      set({ telemetry: { metric, points: data.points || [] } });
+      set({ telemetry: { metric, points: data.points || [] }, error: null });
     } catch (e) {
-      set({ error: String(e) });
+      set({ error: e instanceof Error ? e.message : String(e) });
     }
+  },
+
+  deleteVehicle: async (vin: string) => {
+    const res = await ensureOk(await apiFetch(`/api/vehicles/${vin}`, { method: "DELETE" }));
+    await res.json().catch(() => ({}));
+    set((s) => ({
+      vehicles: s.vehicles.filter((v) => v.vin !== vin),
+      selectedVin: s.selectedVin === vin ? null : s.selectedVin,
+      twin: s.selectedVin === vin ? null : s.twin,
+    }));
   },
 }));

@@ -1,84 +1,219 @@
 @import "tailwindcss";
 @import "@heroui/react/styles";
 
-/* ── Theme defaults ── */
+/*
+ * Vehix UI — HeroUI default palette + light futuristic AI atmosphere.
+ * Do not replace --accent / --surface / --background; only layer ambience.
+ */
+
 :root {
-  color-scheme: dark;
+  /* Semantic tones mapped to HeroUI status tokens */
+  --vehix-ok: var(--success);
+  --vehix-warn: var(--warning);
+  --vehix-critical: var(--danger);
+  --vehix-info: var(--accent);
+  --vehix-muted: var(--muted);
 }
 
-/* ── Base ── */
+.text-tone-ok { color: var(--vehix-ok); }
+.text-tone-warn { color: var(--vehix-warn); }
+.text-tone-critical { color: var(--vehix-critical); }
+.text-tone-info { color: var(--vehix-info); }
+.text-tone-muted { color: var(--vehix-muted); }
+
 html, body, #root {
   height: 100%;
-  background: #09090b;
-  color: #fafafa;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: Outfit, "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: 14px;
   line-height: 1.5;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 5px; height: 5px; }
+/* Soft AI ambience on HeroUI dark background */
+body {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(ellipse 70% 45% at 12% -8%, color-mix(in oklch, var(--accent) 22%, transparent), transparent 55%),
+    radial-gradient(ellipse 55% 40% at 92% 108%, color-mix(in oklch, var(--accent) 12%, transparent), transparent 50%),
+    linear-gradient(
+      color-mix(in oklch, var(--accent) 4%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in oklch, var(--accent) 4%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: auto, auto, 48px 48px, 48px 48px;
+  background-attachment: fixed;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+  color: var(--foreground);
+  background: transparent;
+}
+
+.safe-pb {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+.page-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--foreground);
+  line-height: 1.2;
+}
+@media (min-width: 640px) {
+  .page-title {
+    font-size: 1.75rem;
+  }
+}
+
+.vx-fade-in {
+  animation: vx-fade-up 0.35s ease-out both;
+}
+@keyframes vx-fade-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.vx-app {
+  background: transparent;
+}
+
+.vx-shell {
+  background: color-mix(in oklch, var(--background) 82%, transparent);
+  border-right: 1px solid color-mix(in oklch, var(--separator) 80%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.vx-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.875rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted);
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.vx-nav-item:hover {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--default) 55%, transparent);
+}
+.vx-nav-item-active {
+  color: var(--accent-foreground) !important;
+  background: color-mix(in oklch, var(--accent) 88%, black) !important;
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--accent) 35%, transparent),
+    0 0 20px color-mix(in oklch, var(--accent) 22%, transparent);
+}
+
+.vx-brand {
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--foreground);
+}
+
+.vx-login-stage {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  position: relative;
+  overflow: hidden;
+  background: var(--background);
+}
+.vx-login-stage::before {
+  content: "";
+  position: absolute;
+  inset: -25%;
+  background:
+    radial-gradient(circle at 32% 28%, color-mix(in oklch, var(--accent) 28%, transparent), transparent 42%),
+    radial-gradient(circle at 72% 72%, color-mix(in oklch, var(--accent) 14%, transparent), transparent 45%);
+  animation: vx-drift 18s ease-in-out infinite alternate;
+}
+@keyframes vx-drift {
+  from { transform: translate3d(-1%, 0, 0) scale(1); }
+  to { transform: translate3d(2%, 1%, 0) scale(1.04); }
+}
+.vx-login-card {
+  position: relative;
+  width: 100%;
+  max-width: 22rem;
+}
+
+/*
+ * Legacy class aliases used across the app → HeroUI v3 tokens.
+ * No hard-coded brand hex; keep component sizes from HeroUI.
+ */
+.bg-content1 { background-color: var(--surface) !important; }
+.bg-content2 { background-color: var(--surface-secondary) !important; }
+.border-divider { border-color: var(--separator) !important; }
+.bg-background { background-color: transparent !important; }
+.text-primary { color: var(--accent) !important; }
+.bg-primary { background-color: var(--accent) !important; }
+.bg-primary\/10 { background-color: color-mix(in oklch, var(--accent) 14%, transparent) !important; }
+.bg-primary\/20 { background-color: color-mix(in oklch, var(--accent) 22%, transparent) !important; }
+.border-primary\/30 { border-color: color-mix(in oklch, var(--accent) 30%, transparent) !important; }
+
+/* Subtle AI edge on elevated cards */
+[data-slot="card"],
+.bg-content1.border-divider {
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, var(--accent) 10%, transparent),
+    0 0 0 1px color-mix(in oklch, var(--accent) 6%, transparent);
+}
+
+/* If Badge is ever used without BadgeAnchor, don't let default top-right placement overflow */
+[data-slot="badge"]:not(.badge-anchor [data-slot="badge"]) {
+  position: static !important;
+  transform: none !important;
+}
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
-
-/* ── Streaming Markdown ──────────────────────────────────────── */
-/* Styles the raw HTML output from the worker (marked.parse) to
-   match the existing <Markdown> component's look.                */
-
-.streaming-markdown {
-  word-break: break-word;
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--foreground) 16%, transparent);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--accent) 45%, transparent);
 }
 
-/* Paragraphs */
-.streaming-markdown p {
-  margin-bottom: 0.25rem;
-}
-.streaming-markdown p:last-child {
-  margin-bottom: 0;
-}
-
-/* Headings */
-.streaming-markdown h1 { font-size: 1.125rem; font-weight: 700; margin-top: 0.5rem; margin-bottom: 0.25rem; color: #fafafa; }
-.streaming-markdown h2 { font-size: 1rem; font-weight: 700; margin-top: 0.5rem; margin-bottom: 0.25rem; color: #fafafa; }
-.streaming-markdown h3 { font-size: 0.875rem; font-weight: 600; margin-top: 0.5rem; margin-bottom: 0.25rem; color: #fafafa; }
-.streaming-markdown h4 { font-size: 0.75rem; font-weight: 600; margin-top: 0.5rem; margin-bottom: 0.25rem; color: #fafafa; }
-
-/* Lists */
+/* ── Streaming Markdown ── */
+.streaming-markdown { word-break: break-word; }
+.streaming-markdown p { margin-bottom: 0.25rem; }
+.streaming-markdown p:last-child { margin-bottom: 0; }
+.streaming-markdown h1 { font-size: 1.125rem; font-weight: 700; margin-top: 0.5rem; margin-bottom: 0.25rem; color: var(--foreground); }
+.streaming-markdown h2 { font-size: 1rem; font-weight: 700; margin-top: 0.5rem; margin-bottom: 0.25rem; color: var(--foreground); }
+.streaming-markdown h3 { font-size: 0.875rem; font-weight: 600; margin-top: 0.5rem; margin-bottom: 0.25rem; color: var(--foreground); }
+.streaming-markdown h4 { font-size: 0.75rem; font-weight: 600; margin-top: 0.5rem; margin-bottom: 0.25rem; color: var(--foreground); }
 .streaming-markdown ul,
-.streaming-markdown ol {
-  margin-left: 1rem;
-  margin-bottom: 0.25rem;
-}
-.streaming-markdown li {
-  margin-bottom: 0.125rem;
-  list-style: disc;
-  color: #fafafa;
-}
-.streaming-markdown ol li {
-  list-style: decimal;
-}
-
-/* Inline code */
+.streaming-markdown ol { margin-left: 1rem; margin-bottom: 0.25rem; }
+.streaming-markdown li { margin-bottom: 0.125rem; list-style: disc; color: var(--foreground); }
+.streaming-markdown ol li { list-style: decimal; }
 .streaming-markdown code {
-  background: rgb(39 39 42 / 0.6);
-  color: #93c5fd;
+  background: color-mix(in oklch, var(--accent) 16%, transparent);
+  color: color-mix(in oklch, var(--accent) 70%, white);
   padding: 0.125rem 0.375rem;
   border-radius: 0.25rem;
   font-size: 0.75rem;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
-
-/* Fenced code blocks */
 .streaming-markdown pre {
-  background: #09090b;
-  border: 1px solid rgb(39 39 42 / 0.5);
-  border-radius: 0.5rem;
+  background: color-mix(in oklch, var(--background) 88%, black);
+  border: 1px solid var(--separator);
+  border-radius: 0.75rem;
   padding: 0.75rem;
   margin: 0.5rem 0;
   overflow-x: auto;
   font-size: 0.75rem;
-  color: #fafafa;
+  color: var(--foreground);
 }
 .streaming-markdown pre code {
   background: transparent;
@@ -87,22 +222,9 @@ html, body, #root {
   border-radius: 0;
   font-size: inherit;
 }
-
-/* Bold / strong */
-.streaming-markdown strong {
-  font-weight: 600;
-  color: #fafafa;
-}
-
-/* Table scroll container — blocks re-render as the stream grows;
-   a wide table scrolls horizontally instead of stretching the bubble. */
+.streaming-markdown strong { font-weight: 600; color: var(--foreground); }
 .streaming-markdown .stable-block,
-.streaming-markdown .streaming-block {
-  overflow-x: auto;
-}
-
-/* Tables hug their content (max-content) so each column keeps its
-   natural width while streaming — no reflow jitter. */
+.streaming-markdown .streaming-block { overflow-x: auto; }
 .streaming-markdown table {
   width: max-content;
   border-collapse: collapse;
@@ -111,60 +233,47 @@ html, body, #root {
 }
 .streaming-markdown th {
   text-align: left;
-  color: #fafafa;
+  color: var(--foreground);
   font-weight: 500;
   padding: 0.375rem 0.5rem;
-  border-bottom: 1px solid #52525b;
+  border-bottom: 1px solid var(--separator);
   white-space: nowrap;
   max-width: 20rem;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .streaming-markdown td {
-  color: #a1a1aa;
+  color: var(--muted);
   padding: 0.375rem 0.5rem;
-  border-bottom: 1px solid rgb(39 39 42 / 0.5);
+  border-bottom: 1px solid var(--separator);
   white-space: nowrap;
   max-width: 20rem;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-/* Blockquote */
 .streaming-markdown blockquote {
-  border-left: 3px solid #3f3f46;
+  border-left: 3px solid var(--accent);
   padding-left: 0.75rem;
   margin: 0.25rem 0;
-  color: #a1a1aa;
+  color: var(--muted);
 }
-
-/* Links */
-.streaming-markdown a {
-  color: #60a5fa;
-  text-decoration: underline;
-}
-
-/* Horizontal rule */
+.streaming-markdown a { color: var(--accent); text-decoration: underline; }
 .streaming-markdown hr {
   border: none;
-  border-top: 1px solid rgb(39 39 42 / 0.5);
+  border-top: 1px solid var(--separator);
   margin: 0.5rem 0;
 }
-
-/* Streaming code block cursor effect */
 .streaming-markdown .streaming-block.code-block::after {
   content: "";
   display: inline-block;
   width: 2px;
   height: 1em;
-  background: #60a5fa;
+  background: var(--accent);
   margin-left: 1px;
   vertical-align: text-bottom;
   animation: blink 1s step-end infinite;
 }
-
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
 }
-

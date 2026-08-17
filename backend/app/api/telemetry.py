@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.telemetry import TelemetryRecord
+from app.models.user import User
+from app.auth.dependencies import RequireViewer
 
 router = APIRouter(tags=["telemetry"])
 
@@ -28,6 +30,7 @@ async def get_telemetry(
     hours: int = Query(24, ge=1, le=168),
     limit: int = Query(500, ge=1, le=2000),
     db: AsyncSession = Depends(get_db),
+    _user: User = Depends(RequireViewer),
 ):
     """Query vehicle telemetry history for chart rendering."""
     if metric not in VALID_METRICS:

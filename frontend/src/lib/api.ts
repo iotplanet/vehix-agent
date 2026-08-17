@@ -18,6 +18,39 @@ export function apiUrl(path: string): string {
   return `${API_PREFIX}${path}`;
 }
 
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+/** Parse error detail from FastAPI-style JSON body. */
+export async function errorMessageFromResponse(res: Response): Promise<string> {
+  try {
+    const data = await res.json();
+    if (typeof data.detail === "string") return data.detail;
+    if (Array.isArray(data.detail)) {
+      return data.detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join("; ");
+    }
+    if (typeof data.error === "string") return data.error;
+    if (typeof data.message === "string") return data.message;
+  } catch {
+    /* ignore */
+  }
+  if (res.status === 401) return "登录已过期，请重新登录";
+  if (res.status === 403) return "权限不足";
+  return `请求失败 (${res.status})`;
+}
+
+/** Throw ApiError when response is not OK. */
+export async function ensureOk(res: Response): Promise<Response> {
+  if (res.ok) return res;
+  throw new ApiError(res.status, await errorMessageFromResponse(res));
+}
+
 export async function apiFetch(
   url: string,
   options: RequestInit = {}
@@ -48,7 +81,11 @@ export async function apiFetch(
 
 async function tryRefresh(): Promise<boolean> {
   const refreshToken = useAuthStore.getState().refreshToken;
-  if (!refreshToken) return false;
+  if (!refreshToken) {
+    useAuthStore.getState().logout();
+    useAuthStore.setState({ error: "登录已过期，请重新登录" });
+    return false;
+  }
 
   try {
     const res = await fetch(apiUrl("/api/auth/refresh"), {
@@ -58,6 +95,7 @@ async function tryRefresh(): Promise<boolean> {
     });
     if (!res.ok) {
       useAuthStore.getState().logout();
+      useAuthStore.setState({ error: "登录已过期，请重新登录" });
       return false;
     }
     const data = await res.json();
@@ -67,9 +105,12 @@ async function tryRefresh(): Promise<boolean> {
       token: data.access_token,
       refreshToken: data.refresh_token,
       user: data.user,
+      error: null,
     });
     return true;
   } catch {
+    useAuthStore.getState().logout();
+    useAuthStore.setState({ error: "网络错误，请重新登录" });
     return false;
   }
 }

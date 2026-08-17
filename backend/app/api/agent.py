@@ -16,13 +16,15 @@ import time
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 
 from app.agent.graph import get_graph
 from app.agent.state import VehixAgentState
+from app.auth.dependencies import RequireViewer
+from app.models.user import User
 
 router = APIRouter(tags=["agent"])
 
@@ -30,30 +32,16 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/agent/run")
-async def agent_run(request: Request):
+async def agent_run(
+    request: Request,
+    current_user: User = Depends(RequireViewer),
+):
     body = await request.json()
     message = body.get("message", "")
-    thread_id = body.get("thread_id", str(uuid.uuid4())[:8])
+    thread_id = body.get("thread_id") or str(uuid.uuid4())[:8]
 
     if not message:
         return StreamingResponse(_sse_error("No message provided"), media_type="text/event-stream")
-
-    # Resolve user from JWT (optional)
-    current_user = None
-    try:
-        from app.database import async_session
-        from app.auth.jwt import decode_token
-        from sqlalchemy import select
-        from app.models.user import User
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            payload = decode_token(auth_header[7:])
-            if payload and payload.get("type") == "access":
-                async with async_session() as db:
-                    result = await db.execute(select(User).where(User.id == int(payload.get("sub", 0))))
-                    current_user = result.scalar_one_or_none()
-    except Exception:
-        pass
 
     graph = get_graph()
     llm_token_queue: asyncio.Queue[str] = asyncio.Queue()
@@ -72,7 +60,7 @@ async def agent_run(request: Request):
         start_ts = time.perf_counter()
         first_token_at: float | None = None
         try:
-            username = current_user.username if current_user else None
+            username = current_user.username
 
             # ── Carry forward context from previous turn ─────────
             prev_vin = None
@@ -138,11 +126,11 @@ async def agent_run(request: Request):
                 final = result.get("final_response", "处理完成")
                 yield _sse("message", {"role": "assistant", "content": final})
 
-            yield _sse("done", {"run_id": thread_id})
+            yield _sse("done", {"run_id": thread_id, "thread_id": thread_id})
 
         except Exception as e:
             yield _sse("error", {"message": str(e)})
-            yield _sse("done", {"run_id": None})
+            yield _sse("done", {"run_id": None, "thread_id": thread_id})
 
     return StreamingResponse(
         event_stream(),

@@ -13,6 +13,8 @@ from pydantic_settings import BaseSettings
 # Find .env relative to this file: backend/app/config.py → backend/.env
 _ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
+_DEFAULT_JWT_SECRET = "change-me-in-production-use-openssl-rand-hex-32"
+
 
 class Settings(BaseSettings):
     """Application settings — loaded from .env and environment."""
@@ -38,10 +40,18 @@ class Settings(BaseSettings):
     approval_ttl_s: int = 300
 
     # ── Auth ──
-    jwt_secret: str = "change-me-in-production-use-openssl-rand-hex-32"
+    jwt_secret: str = _DEFAULT_JWT_SECRET
     jwt_expire_minutes: int = 15
     jwt_refresh_days: int = 7
     initial_superuser_password: str = "admin123"
+    initial_admin_password: str = "admin123"
+    initial_operator_password: str = "operator123"
+    initial_viewer_password: str = "viewer123"
+
+    # ── MCP HTTP (external clients) ──
+    # In-process ToolRegistry used by the agent is always available.
+    # HTTP /mcp/* is off by default — enable only when needed.
+    mcp_http_enabled: bool = False
 
     # ── Server ──
     host: str = "0.0.0.0"
@@ -69,6 +79,13 @@ class Settings(BaseSettings):
         "env_file": str(_ENV_FILE),
         "env_file_encoding": "utf-8",
     }
+
+    @property
+    def is_default_jwt_secret(self) -> bool:
+        return self.jwt_secret in (
+            _DEFAULT_JWT_SECRET,
+            "change-me-use-openssl-rand-hex-32",
+        )
 
 
 @lru_cache()

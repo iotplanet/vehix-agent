@@ -7,10 +7,12 @@ These endpoints help users verify their setup without editing files blindly.
 import time
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from app.auth.dependencies import RequireAdmin
 from app.config import settings
+from app.models.user import User
 
 router = APIRouter(tags=["llm"])
 
@@ -37,7 +39,7 @@ class TestResponse(BaseModel):
 
 
 @router.get("/api/llm/status", response_model=LLMStatus)
-async def llm_status():
+async def llm_status(_user: User = Depends(RequireAdmin)):
     """Return current LLM configuration status without exposing the full key."""
     key = settings.llm_api_key
     preview = None
@@ -54,7 +56,7 @@ async def llm_status():
 
 
 @router.post("/api/llm/test", response_model=TestResponse)
-async def llm_test(body: TestRequest):
+async def llm_test(body: TestRequest, _user: User = Depends(RequireAdmin)):
     """Test an LLM API key before deploying it. Does NOT save the key.
 
     Sends a minimal chat completion to verify the key works.

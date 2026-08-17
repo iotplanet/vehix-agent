@@ -14,8 +14,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Persist SQLite (and other runtime data) under /app/data
+RUN mkdir -p /app/data
+
 # Expose port
 EXPOSE 8000
 
-# Run with hot-reload for development
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Production CMD — no --reload. Local hot-reload: python -m app.main
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

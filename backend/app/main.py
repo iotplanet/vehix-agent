@@ -20,6 +20,11 @@ async def lifespan(app: FastAPI):
     """Application lifespan: init DB, seed data, start simulator."""
     # ── Startup ──
     logger.info("Starting Vehix Agent", extra={"version": "0.2.0"})
+    if settings.is_default_jwt_secret:
+        logger.warning(
+            "VEHIX_JWT_SECRET is using the insecure default — set a unique secret "
+            "before any non-local deployment (openssl rand -hex 32)"
+        )
     await init_db()
     logger.info("Database initialized")
     await _seed_users()
@@ -107,6 +112,7 @@ def _register_routers():
     from app.api.llm import router as llm_router
     from app.admin.router import router as admin_router
     from app.api.ota import router as ota_router
+    from app.api.workorders import router as workorders_router
 
     app.include_router(auth_router)  # /api/auth/*
     app.include_router(llm_router)   # /api/llm/*
@@ -116,6 +122,7 @@ def _register_routers():
     app.include_router(commands_router, prefix="/api")
     app.include_router(agent_router, prefix="/api")
     app.include_router(ota_router, prefix="/api")
+    app.include_router(workorders_router, prefix="/api")
     app.include_router(mcp_router)
 
 
@@ -124,8 +131,8 @@ _register_routers()
 
 @app.get("/api/health")
 async def health():
-    """Health check — validates DB, simulator, and LLM connectivity."""
-    status = {"service": "vehix-agent", "version": "0.1.0"}
+    """Liveness/readiness — DB + simulator only (no external LLM calls)."""
+    status = {"service": "vehix-agent", "version": "0.2.0"}
     checks = {}
 
     # DB check
@@ -145,26 +152,7 @@ async def health():
     else:
         checks["simulator"] = "disabled"
 
-    # LLM check — test connectivity
-    from app.config import settings
-    llm_status = {"configured": bool(settings.llm_api_key), "model": settings.llm_model}
-    if settings.llm_api_key:
-        try:
-            import time, httpx
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                start = time.time()
-                resp = await client.post(
-                    f"{settings.llm_base_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {settings.llm_api_key}"},
-                    json={"model": settings.llm_model, "messages": [{"role": "user", "content": "ping"}], "max_tokens": 1},
-                )
-                llm_status["latency_ms"] = round((time.time() - start) * 1000, 1)
-                llm_status["reachable"] = resp.status_code == 200
-        except Exception:
-            llm_status["reachable"] = False
-    checks["llm"] = llm_status
-
-    all_ok = all(v == "ok" if isinstance(v, str) else True for v in checks.values())
+    all_ok = checks.get("database") == "ok"
     status["status"] = "ok" if all_ok else "degraded"
     status["checks"] = checks
     return status
@@ -187,11 +175,11 @@ async def _seed_users():
         users = [
             User(username="superuser", password_hash=hash_password(settings.initial_superuser_password),
                  role="superuser", display_name="超级管理员"),
-            User(username="admin", password_hash=hash_password("admin123"),
+            User(username="admin", password_hash=hash_password(settings.initial_admin_password),
                  role="admin", display_name="管理员"),
-            User(username="operator", password_hash=hash_password("operator123"),
+            User(username="operator", password_hash=hash_password(settings.initial_operator_password),
                  role="operator", display_name="操作员"),
-            User(username="viewer", password_hash=hash_password("viewer123"),
+            User(username="viewer", password_hash=hash_password(settings.initial_viewer_password),
                  role="viewer", display_name="查看者"),
         ]
         db.add_all(users)

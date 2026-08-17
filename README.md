@@ -19,7 +19,8 @@
 
 ## 数据库迁移
 
-使用 Alembic 管理数据库 schema 变更：
+应用启动时用 SQLAlchemy `create_all` 保证表存在（适合 demo）。
+结构化演进请用 Alembic（`alembic.ini` 使用相对路径，可在任意机器执行）：
 
 ```bash
 cd backend
@@ -40,9 +41,17 @@ alembic -c alembic.ini downgrade -1
 ### Docker（独立运行）
 
 ```bash
-VEHIX_LLM_API_KEY=sk-xxx VITE_AMAP_KEY=4b3b... docker compose up -d
+# 推荐：设置 JWT secret；SQLite 数据落在 named volume `backend-data`
+VEHIX_JWT_SECRET=$(openssl rand -hex 32) VEHIX_LLM_API_KEY=sk-xxx VITE_AMAP_KEY=4b3b... docker compose up -d
+
+# 子路径（默认 VITE_BASE_URL=/vehix/）经宿主机 nginx 访问 https://domain/vehix/
+# 裸端口本地访问（无 /vehix/ 前缀）：
+#   VITE_BASE_URL=/ VEHIX_JWT_SECRET=... VEHIX_LLM_API_KEY=... docker compose up -d --build
 # 访问 http://localhost:8080 (前端) / http://localhost:8081 (后端，仅本机)
 ```
+
+`/api/health` 只检查数据库与模拟器（不调用 LLM），供 Docker healthcheck 使用。
+MCP HTTP（`/mcp/*`）默认关闭；需要时设 `VEHIX_MCP_HTTP_ENABLED=true` 且需 admin Token。
 
 ### 宿主机 nginx 反向代理（HTTPS 子路径）
 
@@ -118,14 +127,16 @@ pnpm install && pnpm dev # http://localhost:5173
 
 ## 默认账户
 
-首次启动自动创建以下账户（密码存储在 `.env` 的 `VEHIX_INITIAL_SUPERUSER_PASSWORD`）：
+首次启动（库中无用户时）自动创建以下账户。密码均可经环境变量覆盖：
 
-| 用户名 | 默认密码 | 角色 | 权限范围 |
-|--------|---------|------|---------|
-| `superuser` | `admin123` | 超级管理员 | 所有权限 + 系统配置 |
-| `admin` | `admin123` | 管理员 | 车控审批、OTA 管理、车辆注册 |
-| `operator` | `operator123` | 操作员 | 低风险车控、工单管理、只读 |
-| `viewer` | `viewer123` | 查看者 | 只读：车队、遥测、DTC |
+| 用户名 | 环境变量 | 默认密码 | 角色 |
+|--------|---------|---------|------|
+| `superuser` | `VEHIX_INITIAL_SUPERUSER_PASSWORD` | `admin123` | 超级管理员 |
+| `admin` | `VEHIX_INITIAL_ADMIN_PASSWORD` | `admin123` | 管理员 |
+| `operator` | `VEHIX_INITIAL_OPERATOR_PASSWORD` | `operator123` | 操作员 |
+| `viewer` | `VEHIX_INITIAL_VIEWER_PASSWORD` | `viewer123` | 查看者 |
+
+生产部署务必更换 `VEHIX_JWT_SECRET` 与上述密码。登录页仅在本地开发（或 `VITE_SHOW_DEMO_CREDENTIALS=true`）显示演示账号提示。
 
 ## 安全策略
 
@@ -146,7 +157,9 @@ pnpm install && pnpm dev # http://localhost:5173
 | 高危车控审批 | ❌ | ❌ | ✅ | ✅ |
 | OTA 管理 | ❌ | ❌ | ✅ | ✅ |
 | 车辆注册/删除 | ❌ | ❌ | ✅ | ✅ |
-| 系统配置管理 | ❌ | ❌ | ❌ | ✅ |
+| 工单查看 | ✅ | ✅ | ✅ | ✅ |
+| 工单状态流转 | ❌ | ✅ | ✅ | ✅ |
+| 系统配置管理 | ❌ | ❌ | ✅ | ✅ |
 
 ### 车控审批流
 
@@ -223,7 +236,7 @@ vehix-agent/
 │   │   ├── agent/         # LangGraph 多智能体编排
 │   │   ├── api/           # REST API + SSE streaming
 │   │   ├── auth/          # JWT 认证 + RBAC 权限
-│   │   ├── mcp/           # MCP 工具层 (17 个工具)
+│   │   ├── mcp/           # MCP 工具层 (含 OTA 暂停/继续等)
 │   │   ├── models/        # ORM 模型 (8 个表)
 │   │   └── simulator/     # 车辆模拟器 (GB/T 32960 + JT/T 808)
 │   └── rust-services/     # Rust 安全模块 (WIP)

@@ -17,7 +17,7 @@ from app.models.command import CommandRecord
 from app.models.vehicle import Vehicle
 from app.models.user import User
 from app.agent.nodes.approver import approval_queue
-from app.auth.dependencies import RequireOperator, RequireAdmin, OptionalUser
+from app.auth.dependencies import RequireOperator, RequireAdmin, RequireViewer
 
 router = APIRouter(tags=["commands"])
 
@@ -29,7 +29,8 @@ COMMAND_SPEC = {
     "clear_dtc":        {"risk": "medium",  "desc": "清除故障码"},
     "remote_shutdown":  {"risk": "critical","desc": "紧急远程断电"},
 }
-HIGH_RISK = {"limit_power", "remote_shutdown"}
+# Medium + critical commands require admin approval before dispatch
+APPROVAL_REQUIRED = {"limit_power", "clear_dtc", "remote_shutdown"}
 
 
 def _publish_to_simulator(vin: str, command: str, params: dict):
@@ -47,6 +48,24 @@ def _publish_to_simulator(vin: str, command: str, params: dict):
         )
     except Exception:
         pass  # Simulator may not be running
+
+
+async def _clear_dtc_records(db: AsyncSession, vin: str):
+    """Clear active DTC records after an approved clear_dtc command."""
+    from app.models.dtc import DTCRecord
+    from app.models.vehicle import VehicleTwin
+
+    result = await db.execute(
+        select(DTCRecord).where(DTCRecord.vin == vin, DTCRecord.is_active == True)
+    )
+    for dtc in result.scalars().all():
+        dtc.is_active = False
+        dtc.cleared_at = datetime.utcnow()
+
+    twin_result = await db.execute(select(VehicleTwin).where(VehicleTwin.vin == vin))
+    twin = twin_result.scalar_one_or_none()
+    if twin:
+        twin.active_dtcs = "[]"
 
 
 @router.post("/vehicles/{vin}/commands")
@@ -69,11 +88,11 @@ async def dispatch_command(
 
     params = {k: v for k, v in body.items() if k not in ("command", "vin")}
 
-    is_high_risk = command in HIGH_RISK
+    needs_approval = command in APPROVAL_REQUIRED
     cmd_record = CommandRecord(
         vin=vin, command=command, params=json.dumps(params, ensure_ascii=False),
         risk_level=spec["risk"],
-        status="pending_approval" if is_high_risk else "dispatched",
+        status="pending_approval" if needs_approval else "dispatched",
         operator=current_user.username,
     )
     db.add(cmd_record)
@@ -81,7 +100,7 @@ async def dispatch_command(
     await db.refresh(cmd_record)
 
     # Low-risk commands: publish to simulator immediately
-    if not is_high_risk:
+    if not needs_approval:
         _publish_to_simulator(vin, command, params)
         cmd_record.status = "dispatched"
         cmd_record.executed_at = datetime.utcnow()
@@ -96,7 +115,7 @@ async def dispatch_command(
     response = cmd_record.to_dict()
     response["description"] = spec["desc"]
 
-    if is_high_risk:
+    if needs_approval:
         response["approval_required"] = True
         approval_id = await approval_queue.request()
         response["approval_id"] = approval_id
@@ -108,7 +127,11 @@ async def dispatch_command(
 
 
 @router.get("/commands/{command_id}")
-async def get_command_status(command_id: int, db: AsyncSession = Depends(get_db)):
+async def get_command_status(
+    command_id: int,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(RequireViewer),
+):
     """Query command status."""
     result = await db.execute(select(CommandRecord).where(CommandRecord.id == command_id))
     cmd = result.scalar_one_or_none()
@@ -139,6 +162,8 @@ async def approve_command(
         cmd.executed_at = datetime.utcnow()
         params = json.loads(cmd.params) if cmd.params else {}
         _publish_to_simulator(cmd.vin, cmd.command, params)
+        if cmd.command == "clear_dtc":
+            await _clear_dtc_records(db, cmd.vin)
         await db.commit()
     elif cmd:
         cmd.status = "rejected"

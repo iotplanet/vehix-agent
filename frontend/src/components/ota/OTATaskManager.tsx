@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  Card, CardContent, Button, Modal, ProgressBar, Badge, BadgeLabel,
-  Skeleton, Chip, ChipLabel, Label, Input, TextArea, Select, ListBox,
+  Card, CardContent, Button, Modal, ProgressBar,
+  Skeleton, Label, Input, TextArea, Select, ListBox,
 } from "@heroui/react";
-import { Plus, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, RotateCcw, ChevronDown, ChevronUp, Pause, Play } from "lucide-react";
 import EmptyState from "../shared/EmptyState";
+import StatusBadge from "../shared/StatusBadge";
+import AlertBanner from "../shared/AlertBanner";
 import { apiFetch } from "../../lib/api";
 import { useVehicleStore } from "../../store/vehicleStore";
+import { OTA_BATCH, OTA_STAGE, OTA_STATUS } from "../../lib/statusTheme";
 
 interface BatchPlan {
   batch_no: number;
@@ -30,36 +33,17 @@ interface OTATask {
   completed_at: string | null;
 }
 
-const STATUS_MAP: Record<string, { color: "success" | "warning" | "danger" | "default"; label: string }> = {
-  created: { color: "default", label: "已创建" },
-  in_progress: { color: "warning", label: "进行中" },
-  completed: { color: "success", label: "已完成" },
-  failed: { color: "danger", label: "失败" },
-  rolled_back: { color: "danger", label: "已回滚" },
-};
-
 const STRATEGY_MAP: Record<string, string> = {
   gray_release: "灰度发布",
   batch: "分批发布",
   full: "全量发布",
 };
 
-const BATCH_STATUS: Record<string, { color: "success" | "warning" | "default"; label: string }> = {
-  active: { color: "warning", label: "进行中" },
-  pending: { color: "default", label: "待开始" },
-  completed: { color: "success", label: "已完成" },
-};
-
-const STAGE_MAP: Record<string, { color: "success" | "warning" | "danger" | "default"; label: string }> = {
-  notified: { color: "default", label: "已通知" },
-  downloading: { color: "warning", label: "下载中" },
-  installing: { color: "warning", label: "安装中" },
-  completed: { color: "success", label: "已完成" },
-  failed: { color: "danger", label: "失败" },
-};
-
-/** 任务是否仍在推进中（需轮询刷新） */
 const isActive = (t: OTATask) => t.status === "created" || t.status === "in_progress";
+const canPause = (t: OTATask) => t.status === "created" || t.status === "in_progress";
+const canResume = (t: OTATask) => t.status === "paused";
+const canRollback = (t: OTATask) =>
+  t.status === "created" || t.status === "in_progress" || t.status === "paused";
 
 export default function OTATaskManager() {
   const [tasks, setTasks] = useState<OTATask[]>([]);
@@ -70,13 +54,11 @@ export default function OTATaskManager() {
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Create form state
   const [name, setName] = useState("");
   const [version, setVersion] = useState("");
   const [strategy, setStrategy] = useState("gray_release");
   const [vinsText, setVinsText] = useState("");
 
-  // VIN → 车牌 映射
   const vehicles = useVehicleStore((s) => s.vehicles);
   const fetchVehicles = useVehicleStore((s) => s.fetchVehicles);
 
@@ -87,7 +69,6 @@ export default function OTATaskManager() {
     setTasks(data.tasks || []);
   }, []);
 
-  // 首次加载
   useEffect(() => {
     loadTasks()
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
@@ -96,7 +77,6 @@ export default function OTATaskManager() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 有活跃任务时每 5s 轮询（后端同一节奏推进每车阶段）
   const hasActive = tasks.some(isActive);
   useEffect(() => {
     if (!hasActive) return;
@@ -146,16 +126,20 @@ export default function OTATaskManager() {
     }
   };
 
-  const handleRollback = async (task: OTATask) => {
-    if (!window.confirm(`确认回滚任务「${task.name}」？正在升级的车辆将停止升级。`)) return;
+  const postAction = async (path: string, failLabel: string) => {
     try {
-      const res = await apiFetch(`/api/ota/tasks/${task.id}/rollback`, { method: "POST" });
+      const res = await apiFetch(path, { method: "POST" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || data.error || `回滚失败: ${res.status}`);
+      if (!res.ok) throw new Error(data.detail || data.error || `${failLabel}: ${res.status}`);
       await loadTasks();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
+  };
+
+  const handleRollback = async (task: OTATask) => {
+    if (!window.confirm(`确认回滚任务「${task.name}」？正在升级的车辆将停止升级。`)) return;
+    await postAction(`/api/ota/tasks/${task.id}/rollback`, "回滚失败");
   };
 
   const plateOf = (vin: string) => {
@@ -166,7 +150,7 @@ export default function OTATaskManager() {
   if (loading) {
     return (
       <div className="space-y-3">
-        <h1 className="text-xl font-bold">OTA 任务管理</h1>
+        <h1 className="page-title">OTA 任务管理</h1>
         {Array.from({ length: 2 }).map((_, i) => (
           <Skeleton key={i} className="h-28 rounded-xl" />
         ))}
@@ -176,18 +160,19 @@ export default function OTATaskManager() {
 
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-4">
-        <h1 className="text-xl font-bold">OTA 任务管理</h1>
-        <Button variant="primary" size="sm" className="sm:h-10" onPress={() => setShowCreate(true)}><Plus size={18} className="mr-1" /><span className="hidden sm:inline">创建 OTA 任务</span><span className="sm:hidden">创建任务</span></Button>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+        <h1 className="page-title">OTA 任务管理</h1>
+        <Button variant="primary" size="sm" className="self-start sm:self-auto" onPress={() => setShowCreate(true)}>
+          <Plus size={16} className="mr-1" />创建任务
+        </Button>
       </div>
 
       {error && (
-        <div className="mb-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-sm text-red-400">{error}</div>
+        <div className="mb-3"><AlertBanner>{error}</AlertBanner></div>
       )}
 
       {tasks.length === 0 && (
         <EmptyState
-          icon="📦"
           title="暂无 OTA 任务"
           description="创建第一个远程升级任务"
           action={<Button variant="primary" size="sm" onPress={() => setShowCreate(true)}><Plus size={14} className="mr-1" />创建任务</Button>}
@@ -196,7 +181,7 @@ export default function OTATaskManager() {
 
       <Modal.Backdrop isOpen={showCreate} onOpenChange={(open) => { if (!open) { setShowCreate(false); resetForm(); } }}>
         <Modal.Container>
-          <Modal.Dialog className="bg-content1 border border-divider mx-4 sm:mx-0">
+          <Modal.Dialog className="bg-content1 border border-divider mx-4 sm:mx-0 w-full max-w-md">
             <Modal.Header className="flex items-center justify-between">
               <Modal.Heading className="text-foreground">创建 OTA 升级任务</Modal.Heading>
               <Modal.CloseTrigger />
@@ -230,9 +215,7 @@ export default function OTATaskManager() {
                   <TextArea placeholder="逗号或换行分隔的 VIN 列表" rows={3} variant="secondary" value={vinsText} onChange={(e) => setVinsText(e.target.value)} />
                   <span className="text-xs text-default-400">留空表示全量目标车辆</span>
                 </div>
-                {formError && (
-                  <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400">{formError}</div>
-                )}
+                {formError && <AlertBanner>{formError}</AlertBanner>}
                 <div className="flex justify-end gap-2 pt-2">
                   <Button variant="secondary" onPress={() => { setShowCreate(false); resetForm(); }}>取消</Button>
                   <Button variant="primary" type="submit" isDisabled={creating}>{creating ? "创建中..." : "创建任务"}</Button>
@@ -245,67 +228,80 @@ export default function OTATaskManager() {
 
       <div className="space-y-3">
         {tasks.map((task) => {
-          const st = STATUS_MAP[task.status] || STATUS_MAP.created;
+          const st = OTA_STATUS[task.status] || OTA_STATUS.created;
           const expanded = expandedId === task.id;
           return (
             <Card key={task.id} className="bg-content1 border-divider">
-              <CardContent>
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h3 className="font-medium text-foreground">{task.name}</h3>
+              <CardContent className="space-y-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-medium text-foreground truncate">{task.name}</h3>
+                      <StatusBadge tone={st.tone} label={st.label} />
+                    </div>
                     <div className="text-xs text-default-400 mt-1">
                       {task.software_version} · {STRATEGY_MAP[task.strategy] || task.strategy}
                       {task.created_at && <> · {new Date(task.created_at).toLocaleDateString()}</>}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {isActive(task) && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {canPause(task) && (
+                      <Button variant="secondary" size="sm" onPress={() => postAction(`/api/ota/tasks/${task.id}/pause`, "暂停失败")}>
+                        <Pause size={14} className="mr-1" />暂停
+                      </Button>
+                    )}
+                    {canResume(task) && (
+                      <Button variant="secondary" size="sm" onPress={() => postAction(`/api/ota/tasks/${task.id}/resume`, "继续失败")}>
+                        <Play size={14} className="mr-1" />继续
+                      </Button>
+                    )}
+                    {canRollback(task) && (
                       <Button variant="secondary" size="sm" onPress={() => handleRollback(task)}>
                         <RotateCcw size={14} className="mr-1" />回滚
                       </Button>
                     )}
-                    <Badge variant="soft" color={st.color}><BadgeLabel>{st.label}</BadgeLabel></Badge>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <ProgressBar value={task.progress_percent} className="flex-1" />
-                  <span className="text-xs text-default-400 min-w-[80px] text-right">{task.completed_vins.length}/{task.target_vins.length} ({task.progress_percent.toFixed(1)}%)</span>
+                  <ProgressBar value={task.progress_percent} className="flex-1 min-w-0" />
+                  <span className="text-xs text-default-400 tabular-nums whitespace-nowrap">
+                    {task.completed_vins.length}/{task.target_vins.length}
+                    <span className="hidden xs:inline sm:inline"> ({task.progress_percent.toFixed(0)}%)</span>
+                  </span>
                 </div>
 
-                {/* ── 批次计划 + 每车阶段（展开） ── */}
-                <Button variant="secondary" size="sm" className="mt-3 w-full justify-center" onPress={() => setExpandedId(expanded ? null : task.id)}>
+                <Button variant="secondary" size="sm" className="w-full justify-center" onPress={() => setExpandedId(expanded ? null : task.id)}>
                   {expanded ? <ChevronUp size={14} className="mr-1" /> : <ChevronDown size={14} className="mr-1" />}
                   {expanded ? "收起详情" : "查看批次与车辆进度"}
                 </Button>
 
                 {expanded && (
-                  <div className="mt-3 space-y-3">
-                    {/* 批次计划 */}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-default-400">批次计划：</span>
+                  <div className="space-y-3 pt-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs text-default-400 mr-1">批次：</span>
                       {task.batch_plan.map((b) => {
-                        const bs = BATCH_STATUS[b.status] || BATCH_STATUS.pending;
+                        const bs = OTA_BATCH[b.status] || OTA_BATCH.pending;
                         return (
-                          <Chip key={b.batch_no} size="sm" variant="secondary">
-                            <ChipLabel className="flex items-center gap-1">
-                              <span>第 {b.batch_no} 批 · {b.size} 台</span>
-                              <Badge variant="soft" color={bs.color} className="scale-90 origin-left"><BadgeLabel>{bs.label}</BadgeLabel></Badge>
-                            </ChipLabel>
-                          </Chip>
+                          <div
+                            key={b.batch_no}
+                            className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-default/30 border border-divider text-xs text-default-500"
+                          >
+                            <span>第 {b.batch_no} 批 · {b.size} 台</span>
+                            <StatusBadge tone={bs.tone} label={bs.label} />
+                          </div>
                         );
                       })}
                     </div>
 
-                    {/* 每车阶段 */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                       {task.target_vins.map((vin) => {
                         const stage = task.vehicle_progress[vin];
-                        const sm = stage ? (STAGE_MAP[stage] || STAGE_MAP.notified) : STAGE_MAP.notified;
+                        const sm = stage ? (OTA_STAGE[stage] || OTA_STAGE.notified) : OTA_STAGE.notified;
                         return (
-                          <div key={vin} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-default/40 border border-divider">
+                          <div key={vin} className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-default/30 border border-divider">
                             <span className="text-xs text-default-400 truncate">{plateOf(vin)}</span>
-                            <Badge variant="soft" color={sm.color}><BadgeLabel>{sm.label}</BadgeLabel></Badge>
+                            <StatusBadge tone={sm.tone} label={sm.label} />
                           </div>
                         );
                       })}

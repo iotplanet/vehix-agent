@@ -87,27 +87,13 @@ async def read_dtc_snapshot(vin: str, dtc_code: str) -> dict:
 
 @tool_registry.tool(
     name="clear_dtc",
-    description="清除车辆DTC故障码 (UDS 0x14服务)。生产环境需安全访问解锁 (UDS 0x27)",
+    description="清除车辆DTC故障码 (UDS 0x14服务)。中风险操作，需管理员审批后执行",
+    approval_required=True,
 )
 async def clear_dtc(vin: str) -> dict:
-    """Clear all active DTCs for a vehicle."""
-    async with async_session() as db:
-        result = await db.execute(
-            select(DTCRecord).where(DTCRecord.vin == vin, DTCRecord.is_active == True))
-        active = result.scalars().all()
-        cleared = 0
-        for dtc in active:
-            dtc.is_active = False
-            dtc.cleared_at = datetime.utcnow()
-            cleared += 1
-
-        twin_result = await db.execute(select(VehicleTwin).where(VehicleTwin.vin == vin))
-        twin = twin_result.scalar_one_or_none()
-        if twin:
-            twin.active_dtcs = "[]"
-
-        await db.commit()
-        return {"vin": vin, "cleared": True, "cleared_count": cleared}
+    """Request DTC clear via the command dispatch path (requires approval)."""
+    from app.mcp.vehicle_mcp import dispatch_vehicle_command
+    return await dispatch_vehicle_command(vin=vin, command="clear_dtc")
 
 
 @tool_registry.tool(

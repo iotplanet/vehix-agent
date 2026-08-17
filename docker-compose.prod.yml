@@ -18,7 +18,7 @@
 
 services:
   backend:
-    image: ${ACR_REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${ACR_NAMESPACE:-iotplanet}/vehix-backend:${IMAGE_TAG:-latest}
+    image: ${ACR_REGISTRY:-crpi-nbtbd3he12o91qit.cn-hangzhou.personal.cr.aliyuncs.com}/${ACR_NAMESPACE:-iotplanet}/vehix-backend:${IMAGE_TAG:-latest}
 
   frontend:
-    image: ${ACR_REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${ACR_NAMESPACE:-iotplanet}/vehix-frontend:${IMAGE_TAG:-latest}
+    image: ${ACR_REGISTRY:-crpi-nbtbd3he12o91qit.cn-hangzhou.personal.cr.aliyuncs.com}/${ACR_NAMESPACE:-iotplanet}/vehix-frontend:${IMAGE_TAG:-latest}

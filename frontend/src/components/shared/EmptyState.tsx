@@ -1,26 +1,24 @@
 /**
  * EmptyState — placeholder for empty data views.
- *
- * Usage:
- *   <EmptyState icon="🗺️" title="暂无车辆数据" />
- *   <EmptyState icon="📦" title="暂无OTA任务" action={<Button>创建任务</Button>} />
  */
-
 import { ReactNode } from "react";
+import { Inbox } from "lucide-react";
 
 interface Props {
-  icon?: string;            // emoji icon
+  icon?: ReactNode;
   title: string;
   description?: string;
-  action?: ReactNode;       // optional action button/link
+  action?: ReactNode;
 }
 
-export default function EmptyState({ icon = "📭", title, description, action }: Props) {
+export default function EmptyState({ icon, title, description, action }: Props) {
   return (
-    <div className="flex flex-col items-center justify-center py-12 text-center">
-      <div className="text-3xl mb-3 opacity-60">{icon}</div>
+    <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+      <div className="mb-3 text-default-400 opacity-70">
+        {icon ?? <Inbox size={32} strokeWidth={1.5} />}
+      </div>
       <div className="text-sm font-medium text-default-400">{title}</div>
-      {description && <div className="text-xs text-default-500 mt-1">{description}</div>}
+      {description && <div className="text-xs text-default-500 mt-1 max-w-xs">{description}</div>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   );

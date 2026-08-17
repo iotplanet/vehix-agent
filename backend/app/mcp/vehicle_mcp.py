@@ -24,7 +24,7 @@ COMMAND_SPEC = {
     "clear_dtc":        {"risk": "medium",  "desc": "清除故障码"},
     "remote_shutdown":  {"risk": "critical","desc": "紧急远程断电"},
 }
-HIGH_RISK = {"limit_power", "remote_shutdown"}
+HIGH_RISK = {"limit_power", "clear_dtc", "remote_shutdown"}
 
 
 @tool_registry.tool(

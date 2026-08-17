@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import {
   Card, CardContent, CardHeader,
-  Button, Input, Badge, BadgeLabel, Skeleton,
+  Button, Input, Skeleton,
   TextField, Label,
 } from "@heroui/react";
 import { Wrench, ExternalLink, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { apiFetch } from "../../lib/api";
+import StatusBadge from "../shared/StatusBadge";
 
 interface LLMStatus {
   configured: boolean;
@@ -29,7 +30,13 @@ export default function SystemSettings() {
   const [testing, setTesting] = useState(false);
 
   useEffect(() => {
-    apiFetch("/api/llm/status").then(r => r.json()).then(setStatus);
+    apiFetch("/api/llm/status")
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`加载失败: ${r.status}`);
+        return r.json();
+      })
+      .then(setStatus)
+      .catch(() => setStatus(null));
   }, []);
 
   const handleTest = async () => {
@@ -40,7 +47,10 @@ export default function SystemSettings() {
       const res = await apiFetch("/api/llm/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: testKey, base_url: status?.base_url || "https://api.deepseek.com" }),
+        body: JSON.stringify({
+          api_key: testKey,
+          base_url: status?.base_url || "https://api.deepseek.com",
+        }),
       });
       const data = await res.json();
       setTestResult(data);
@@ -53,19 +63,19 @@ export default function SystemSettings() {
 
   return (
     <div className="max-w-2xl space-y-4">
-      <h1 className="text-xl font-bold flex items-center gap-2">
-        <Wrench size={20} className="text-default-400" /> 系统设置
+      <h1 className="page-title flex items-center gap-2">
+        <Wrench size={18} className="text-default-400" /> 系统设置
       </h1>
 
-      {/* LLM Status */}
       <Card className="bg-content1 border-divider">
         <CardHeader>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium text-foreground">LLM 配置</span>
             {status && (
-              <Badge variant="soft" size="sm" color={status.configured ? "success" : "danger"}>
-                <BadgeLabel>{status.configured ? "已配置" : "未配置"}</BadgeLabel>
-              </Badge>
+              <StatusBadge
+                tone={status.configured ? "success" : "danger"}
+                label={status.configured ? "已配置" : "未配置"}
+              />
             )}
           </div>
         </CardHeader>
@@ -87,7 +97,6 @@ export default function SystemSettings() {
         </CardContent>
       </Card>
 
-      {/* LLM Test */}
       <Card className="bg-content1 border-divider">
         <CardHeader>
           <span className="text-sm font-medium text-foreground">测试连接</span>
@@ -107,22 +116,25 @@ export default function SystemSettings() {
               className="font-mono text-xs"
             />
           </TextField>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <Button
               variant="primary"
               size="sm"
               onPress={handleTest}
               isDisabled={!testKey.trim() || testing}
+              className="self-start"
             >
               {testing ? <Loader2 size={14} className="animate-spin mr-1" /> : <ExternalLink size={14} className="mr-1" />}
               测试连接
             </Button>
             {testResult && (
-              <div className={`flex items-center gap-1.5 text-sm ${testResult.ok ? "text-green-400" : "text-red-400"}`}>
-                {testResult.ok ? <CheckCircle size={16} /> : <XCircle size={16} />}
-                {testResult.ok
-                  ? `连接成功 · ${testResult.latency_ms}ms`
-                  : testResult.error || "连接失败"}
+              <div className={`flex items-start gap-1.5 text-sm break-all ${testResult.ok ? "text-tone-ok" : "text-tone-critical"}`}>
+                {testResult.ok ? <CheckCircle size={16} className="flex-shrink-0 mt-0.5" /> : <XCircle size={16} className="flex-shrink-0 mt-0.5" />}
+                <span>
+                  {testResult.ok
+                    ? `连接成功 · ${testResult.latency_ms}ms`
+                    : testResult.error || "连接失败"}
+                </span>
               </div>
             )}
           </div>
@@ -134,9 +146,9 @@ export default function SystemSettings() {
 
 function Info({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="flex justify-between items-center text-sm">
-      <span className="text-default-400">{label}</span>
-      <span className={`text-foreground ${mono ? "font-mono text-xs" : ""}`}>{value}</span>
+    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-0.5 sm:gap-3 text-sm">
+      <span className="text-default-400 flex-shrink-0">{label}</span>
+      <span className={`text-foreground break-all ${mono ? "font-mono text-xs" : ""}`}>{value}</span>
     </div>
   );
 }

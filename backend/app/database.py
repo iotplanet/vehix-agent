@@ -28,7 +28,12 @@ async def get_db() -> AsyncSession:
 
 
 async def init_db():
-    """Create all tables on startup."""
+    """Ensure schema exists on startup.
+
+    Demo/default path uses SQLAlchemy create_all (idempotent).
+    For controlled schema evolution use Alembic manually:
+      alembic -c alembic.ini upgrade head
+    """
     # Ensure all ORM models are imported before creating tables
     import app.models  # noqa: F401
     async with engine.begin() as conn:

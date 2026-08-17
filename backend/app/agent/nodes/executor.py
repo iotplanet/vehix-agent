@@ -122,9 +122,12 @@ class ToolExecutor:
         requires_approval = result.get("approval_required", False) if isinstance(result, dict) else False
         approval_context = None
         if requires_approval:
+            cmd_name = ""
+            if isinstance(result, dict):
+                cmd_name = result.get("command", "") or args.get("command", "") or tool_name
             approval_context = {
                 "vin": vin or args.get("vin", ""),
-                "command": args.get("command", ""),
+                "command": cmd_name,
                 "params": {k: v for k, v in args.items() if k not in ("vin", "command")},
                 "result": result,
             }
