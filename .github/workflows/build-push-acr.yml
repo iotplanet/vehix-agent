@@ -1,0 +1,160 @@
+# Vehix Agent — CI 构建镜像并推送阿里云 ACR（个人版）
+#
+# 触发方式：
+#   - push 到 main → 构建并推送 backend / frontend（tag: latest + sha-xxxxxxx）
+#   - push tag v*  → 附带版本 tag（如 v1.2.3）
+#   - 手动触发（workflow_dispatch）→ 可自定义 VITE_BASE_URL
+#
+# 服务器侧只需 pull（见 docker-compose.prod.yml 与 README）：
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+#
+# 需要配置的 Secrets（GitHub → Settings → Secrets and variables → Actions）：
+#   ACR_USERNAME   阿里云账号名 / RAM 用户名
+#   ACR_PASSWORD   ACR 个人版「访问凭证」里设置的独立密码
+#   VITE_AMAP_KEY  高德 JS API Key（构建时打入前端镜像）
+
+name: Build & Push (ACR)
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      vite_base_url:
+        description: "前端子路径（构建参数 VITE_BASE_URL）"
+        required: false
+        default: "/vehix/"
+
+env:
+  # 改成你在 ACR 个人版控制台创建的命名空间
+  ACR_NAMESPACE: iotplanet
+  REGISTRY: crpi-nbtbd3he12o91qit.cn-hangzhou.personal.cr.aliyuncs.com
+  # 服务器 CPU 架构：默认 linux/amd64；ARM 服务器改为 linux/arm64
+  PLATFORMS: linux/amd64
+
+concurrency:
+  group: acr-build
+  cancel-in-progress: false
+
+jobs:
+  test-backend:
+    name: test-backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install & test
+        run: |
+          pip install -r requirements.txt
+          pytest -q
+
+  test-frontend:
+    name: test-frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install & test
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm test
+
+  backend:
+    name: backend
+    needs: [test-backend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.ACR_NAMESPACE }}/vehix-backend
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+            type=ref,event=tag
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: ${{ env.PLATFORMS }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+  frontend:
+    name: frontend
+    needs: [test-frontend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.ACR_NAMESPACE }}/vehix-frontend
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+            type=ref,event=tag
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          target: prod
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: ${{ env.PLATFORMS }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+          build-args: |
+            VITE_AMAP_KEY=${{ secrets.VITE_AMAP_KEY }}
+            VITE_BASE_URL=${{ github.event.inputs.vite_base_url || '/vehix/' }}
