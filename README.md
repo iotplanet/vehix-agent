@@ -71,6 +71,35 @@ VITE_BASE_URL=/vehix/ VEHIX_LLM_API_KEY=sk-xxx docker compose up -d
 
 TLS 由宿主机 nginx 处理，容器内部只运行 HTTP。
 
+### CI 构建 + 服务器拉取部署（推荐）
+
+镜像由 GitHub Actions 构建并推送阿里云 ACR（个人版），服务器只 `pull` 不打包。
+
+**一次性配置（GitHub）**：
+
+1. 在 ACR 控制台创建命名空间（如 `iotplanet`），并设置「访问凭证」密码
+2. GitHub → Settings → Secrets and variables → Actions，新增 Secrets：
+   - `ACR_USERNAME`：阿里云账号名
+   - `ACR_PASSWORD`：ACR 访问凭证密码
+   - `VITE_AMAP_KEY`：高德 JS API Key
+3. 若命名空间不是 `iotplanet`，修改 `.github/workflows/build-push-acr.yml` 顶部的 `ACR_NAMESPACE`
+
+push 到 `main` 后自动构建并推送 `latest` + `sha-xxxxxxx` 两个 tag；打 `v*` tag 会额外生成版本 tag。
+
+**服务器部署**（只需 Docker，无需构建链）：
+
+```bash
+echo "ACR_NAMESPACE=iotplanet" >> .env
+docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+**日常更新**：服务器上重复上面 pull + up 两步即可；需要回滚时固定版本拉取：
+
+```bash
+IMAGE_TAG=sha-abc1234 docker compose -f docker-compose.yml -f docker-compose.prod.yml pull && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
 ## 快速启动
 
 ```bash

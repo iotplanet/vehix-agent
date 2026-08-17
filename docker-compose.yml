@@ -6,8 +6,12 @@
 #   /vehix/api/  → 127.0.0.1:8081 (backend)
 #   /vehix/      → 127.0.0.1:8080 (frontend)
 #
-# Quick start:
+# Quick start (local build):
 #   VEHIX_LLM_API_KEY=sk-xxx docker compose up -d
+#
+# Server deployment (pull prebuilt images from ACR, no local build):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 services:
   # ── Backend ────────────────────────────────────────────────────

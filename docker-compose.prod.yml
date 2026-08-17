@@ -1,0 +1,24 @@
+# Vehix Agent — 生产环境镜像引用覆盖（服务器无需本地构建）
+#
+# 镜像由 GitHub Actions 构建并推送阿里云 ACR：
+#   .github/workflows/build-push-acr.yml
+#
+# 服务器部署流程（无需安装 Node/Python 构建链，只需 Docker）：
+#   1. 在 .env 中设置 ACR_NAMESPACE（你的 ACR 命名空间）
+#      echo "ACR_NAMESPACE=iotplanet" >> .env
+#   2. 拉取镜像：
+#      docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+#   3. 启动：
+#      docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#   4. 更新：重复 2、3 两步（可固定版本：
+#      IMAGE_TAG=sha-abc1234 docker compose ... pull）
+#
+# 说明：覆盖文件只补充 image 字段。镜像已存在本地时 compose 不会
+# 重新构建（build 段仅在镜像缺失或 --build 时生效）。
+
+services:
+  backend:
+    image: ${ACR_REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${ACR_NAMESPACE:-iotplanet}/vehix-backend:${IMAGE_TAG:-latest}
+
+  frontend:
+    image: ${ACR_REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${ACR_NAMESPACE:-iotplanet}/vehix-frontend:${IMAGE_TAG:-latest}
